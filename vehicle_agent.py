@@ -34,6 +34,7 @@ class VehicleAgent:
         self.last_ai_call_time = 0
         self.decision_cooldown = 1.0
         self.waiting_for_ai = False
+        self.visual_angle = 0.0
 
         # --- NOU: 1. GENERAREA RUTEI (Dijkstra) ---
         self.graph = nx.DiGraph()
@@ -359,26 +360,39 @@ class VehicleAgent:
         if self.speed <= 0 or self.current_node_index >= len(self.route) - 1:
             return
 
+        # 1. Luăm coordonatele URMĂTORULUI nod țintă
         next_node_name = self.route[self.current_node_index + 1]
         tx, ty = nodes[next_node_name]
 
+        # 2. Calculăm distanța până la țintă
         dist = math.sqrt((tx - self.position_x) ** 2 + (ty - self.position_y) ** 2)
 
+        # 3. Verificăm dacă am ajuns la nod (logica existentă)
         if dist < 5.0:
             self.current_node_index += 1
             if self.current_node_index >= len(self.route) - 1:
                 return
 
+            # Recalculăm intenția de viraj (pentru semnalizări)
             self._update_heading_and_turn()
 
+            # Actualizăm ținta către nodul următor
             next_node_name = self.route[self.current_node_index + 1]
             tx, ty = nodes[next_node_name]
 
-        angle = math.atan2(ty - self.position_y, tx - self.position_x)
-        self.position_x += self.speed * dt * math.cos(angle)
-        self.position_y += self.speed * dt * math.sin(angle)
+        # 4. CALCULĂM UNGHIUL EXACT DE DEPLASARE (Rotația Continuă)
+        # math.atan2 returnează unghiul în radiani (-pi la pi)
+        angle_rad = math.atan2(ty - self.position_y, tx - self.position_x)
 
-        deg = math.degrees(angle)
+        # Convertim în grade (necesar pentru Pygame)
+        self.visual_angle = math.degrees(angle_rad)
+
+        # 5. Mișcăm mașina (logica existentă)
+        self.position_x += self.speed * dt * math.cos(angle_rad)
+        self.position_y += self.speed * dt * math.sin(angle_rad)
+
+        # 6. (Opțional - Păstrăm și heading discret pentru compatibilitate logica AI)
+        deg = self.visual_angle
         if -45 <= deg <= 45:
             self.heading = "EAST"
         elif 45 < deg <= 135:
@@ -422,6 +436,8 @@ class VehicleAgent:
             "position_y": self.position_y,
             "speed": self.speed,
             "vehicle_type": self.vehicle_type,
+            # NOU: Trimitem unghiul vizual continuu
+            "visual_angle": self.visual_angle,
             "intent": (
                 self.current_state
                 if self.current_state != "CRUISE"

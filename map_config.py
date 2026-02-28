@@ -1,9 +1,9 @@
 # map_config.py
 # Rezoluție: 1500x800
-# Logica: I4 se varsă direct în fluxul diagonal (Merge Points)
+# Logica: 4 noduri per intersecție (Colțurile: NW, NE, SE, SW) cu viraje perpendiculare.
 
 nodes = {
-    # --- MARGINI ---
+    # --- MARGINI (Punctele de Spawn / Ieșire nu se schimbă) ---
     "W_START": (0, 670),
     "W_END": (0, 630),
     "E_START": (1500, 630),
@@ -15,106 +15,75 @@ nodes = {
     "NW_START": (0, 100),
     "NW_END": (0, 50),
     "NE_ONEWAY_START": (1000, 0),
-    # --- INTERSECȚIA 1 (Jos-Stânga) ---
-    "I1_W_STOP": (340, 670),
-    "I1_W_EXIT": (340, 630),
-    "I1_S_STOP": (420, 710),
-    "I1_S_EXIT": (380, 710),
-    "I1_E_STOP": (460, 630),
-    "I1_E_EXIT": (460, 670),
-    "I1_N_STOP": (380, 590),
-    "I1_N_EXIT": (420, 590),
-    # --- INTERSECȚIA 2 (Jos-Dreapta) ---
-    "I2_W_STOP": (1040, 670),
-    "I2_W_EXIT": (1040, 630),
-    "I2_S_STOP": (1120, 710),
-    "I2_S_EXIT": (1080, 710),
-    "I2_E_STOP": (1160, 630),
-    "I2_E_EXIT": (1160, 670),
-    # Capetele diagonalei la I2
-    "I2_DIAG_STOP": (1060, 580),  # Unde ajunge coborârea
-    "I2_DIAG_EXIT": (1080, 560),  # De unde pleacă urcarea
-    # --- INTERSECȚIA 3 (Sus-Stânga) ---
-    "I3_NW_STOP": (350, 280),
-    "I3_NW_EXIT": (400, 240),
-    "I3_S_STOP": (420, 360),
-    "I3_S_EXIT": (380, 360),
-    # Capetele diagonalei la I3
-    "I3_DIAG_EXIT": (460, 320),  # De unde pleacă coborârea
-    "I3_DIAG_STOP": (500, 300),  # Unde ajunge urcarea
-    # --- INTERSECȚIA 4 (PUNCT DE FUZIUNE PE DIAGONALĂ) ---
-    # Acesta este nodul de intrare dinspre NE
-    "I4_IN_STOP": (820, 390),
-    # PUNCTELE DE MERGE (Exact pe liniile dintre I2 și I3)
-    # Aici traficul din I4 intră pe banda care merge spre I3 (Urcare)
-    "MERGE_POINT_UP": (800, 435),
-    # Aici traficul din I4 intră pe banda care merge spre I2 (Coborâre)
-    "MERGE_POINT_DOWN": (780, 465),
+    # --- INTERSECȚIA 1 (4 noduri centrale) ---
+    "I1_NW": (380, 630),
+    "I1_NE": (420, 630),
+    "I1_SE": (420, 670),
+    "I1_SW": (380, 670),
+    # --- INTERSECȚIA 2 (4 noduri centrale) ---
+    "I2_NW": (1080, 630),
+    "I2_NE": (1120, 630),
+    "I2_SE": (1120, 670),
+    "I2_SW": (1080, 670),
+    # --- INTERSECȚIA 3 (4 noduri centrale) ---
+    "I3_NW": (380, 280),
+    "I3_NE": (420, 280),
+    "I3_SE": (420, 320),
+    "I3_SW": (380, 320),
+    # --- INTERSECȚIA 4 (Merge Points - rămâne la fel de simplu) ---
+    "I4_IN": (840, 350),  # Punctul de intrare dinspre Nord-Est
+    "MERGE_UP": (770, 455),  # Mijlocul matematic perfect între I2_NE și I3_NE
+    "MERGE_DOWN": (750, 475),
 }
 
 edges = [
-    # 1. Magistrala Orizontală Jos
-    ("W_START", "I1_W_STOP", 1),
-    ("I1_W_EXIT", "W_END", 1),
-    ("I1_E_EXIT", "I2_W_STOP", 1),
-    ("I2_W_EXIT", "I1_E_STOP", 1),
-    ("I2_E_EXIT", "E_END", 1),
-    ("E_START", "I2_E_STOP", 1),
-    # 2. Verticala Stânga
-    ("S1_START", "I1_S_STOP", 1),
-    ("I1_S_EXIT", "S1_END", 1),
-    ("I1_N_EXIT", "I3_S_STOP", 1),
-    ("I3_S_EXIT", "I1_N_STOP", 1),
-    # 3. Verticala Dreapta
-    ("S2_START", "I2_S_STOP", 1),
-    ("I2_S_EXIT", "S2_END", 1),
-    # 4. Diagonala Nord-Vest
-    ("NW_START", "I3_NW_STOP", 1),
-    ("I3_NW_EXIT", "NW_END", 1),
-    # 5. DIAGONALA URCARE (I2 -> I4 Merge -> I3)
-    # Drumul se rupe în două segmente la I4
-    ("I2_DIAG_EXIT", "MERGE_POINT_UP", 1),  # Segment 1: I2 până la I4
-    ("MERGE_POINT_UP", "I3_DIAG_STOP", 1),  # Segment 2: I4 până la I3
-    # 6. DIAGONALA COBORÂRE (I3 -> I4 Merge -> I2)
-    # Drumul se rupe în două segmente la I4
-    ("I3_DIAG_EXIT", "MERGE_POINT_DOWN", 1),  # Segment 1: I3 până la I4
-    ("MERGE_POINT_DOWN", "I2_DIAG_STOP", 1),  # Segment 2: I4 până la I2
-    # 7. SENS UNIC I4 (Intrare NE -> Merge Points)
-    ("NE_ONEWAY_START", "I4_IN_STOP", 1),
-    # De la I4, poți intra pe oricare din sensuri
-    ("I4_IN_STOP", "MERGE_POINT_UP", 1),  # Vrei să mergi spre I3
-    ("I4_IN_STOP", "MERGE_POINT_DOWN", 1),  # Vrei să mergi spre I2
-    # --- 8. LEGAREA INTERNĂ A INTERSECȚIEI 1 ---
-    ("I1_W_STOP", "I1_E_EXIT", 1),
-    ("I1_W_STOP", "I1_N_EXIT", 1),
-    ("I1_W_STOP", "I1_S_EXIT", 1),
-    ("I1_E_STOP", "I1_W_EXIT", 1),
-    ("I1_E_STOP", "I1_N_EXIT", 1),
-    ("I1_E_STOP", "I1_S_EXIT", 1),
-    ("I1_S_STOP", "I1_N_EXIT", 1),
-    ("I1_S_STOP", "I1_E_EXIT", 1),
-    ("I1_S_STOP", "I1_W_EXIT", 1),
-    ("I1_N_STOP", "I1_S_EXIT", 1),
-    ("I1_N_STOP", "I1_E_EXIT", 1),
-    ("I1_N_STOP", "I1_W_EXIT", 1),
-    # --- 9. LEGAREA INTERNĂ A INTERSECȚIEI 2 ---
-    ("I2_W_STOP", "I2_E_EXIT", 1),
-    ("I2_W_STOP", "I2_S_EXIT", 1),
-    ("I2_W_STOP", "I2_DIAG_EXIT", 1),
-    ("I2_E_STOP", "I2_W_EXIT", 1),
-    ("I2_E_STOP", "I2_S_EXIT", 1),
-    ("I2_E_STOP", "I2_DIAG_EXIT", 1),
-    ("I2_S_STOP", "I2_W_EXIT", 1),
-    ("I2_S_STOP", "I2_E_EXIT", 1),
-    ("I2_S_STOP", "I2_DIAG_EXIT", 1),
-    ("I2_DIAG_STOP", "I2_W_EXIT", 1),
-    ("I2_DIAG_STOP", "I2_E_EXIT", 1),
-    ("I2_DIAG_STOP", "I2_S_EXIT", 1),
-    # --- 10. LEGAREA INTERNĂ A INTERSECȚIEI 3 ---
-    ("I3_NW_STOP", "I3_S_EXIT", 1),
-    ("I3_NW_STOP", "I3_DIAG_EXIT", 1),
-    ("I3_S_STOP", "I3_NW_EXIT", 1),
-    ("I3_S_STOP", "I3_DIAG_EXIT", 1),
-    ("I3_DIAG_STOP", "I3_NW_EXIT", 1),
-    ("I3_DIAG_STOP", "I3_S_EXIT", 1),
+    # --- 1. INTRARE / IEȘIRE SPRE MARGINI ---
+    # Vest
+    ("W_START", "I1_SW", 1),
+    ("I1_NW", "W_END", 1),
+    # Est
+    ("E_START", "I2_NE", 1),
+    ("I2_SE", "E_END", 1),
+    # Sud 1
+    ("S1_START", "I1_SE", 1),
+    ("I1_SW", "S1_END", 1),
+    # Sud 2
+    ("S2_START", "I2_SE", 1),
+    ("I2_SW", "S2_END", 1),
+    # Nord-Vest
+    ("NW_START", "I3_NW", 1),
+    ("I3_NE", "NW_END", 1),
+    # --- 2. DRUMURI DE LEGĂTURĂ ÎNTRE INTERSECȚII ---
+    # I1 <-> I2 (Orizontală Jos)
+    ("I1_SE", "I2_SW", 1),  # Spre Est
+    ("I2_NW", "I1_NE", 1),  # Spre Vest
+    # I1 <-> I3 (Verticală Stânga)
+    ("I1_NE", "I3_SE", 1),  # Spre Nord
+    ("I3_SW", "I1_NW", 1),  # Spre Sud
+    # I2 <-> I3 (Diagonala Principală) - Trece prin Merge Points
+    ("I3_SE", "MERGE_DOWN", 1),  # Din I3 coboară spre I2
+    ("MERGE_DOWN", "I2_NW", 1),
+    ("I2_NE", "MERGE_UP", 1),  # Din I2 urcă spre I3
+    ("MERGE_UP", "I3_NE", 1),
+    # --- 3. SENS UNIC I4 ---
+    ("NE_ONEWAY_START", "I4_IN", 1),
+    ("I4_IN", "MERGE_UP", 1),  # Se varsă spre I3
+    ("I4_IN", "MERGE_DOWN", 1),  # Se varsă spre I2
+    # --- 4. LEGAREA INTERNĂ A INTERSECȚIILOR (Pătratul Perpendicular) ---
+    # Mașinile circulă Counter-Clockwise în interior (regula de prioritate dreapta)
+    # I1
+    ("I1_NW", "I1_SW", 1),
+    ("I1_SW", "I1_SE", 1),
+    ("I1_SE", "I1_NE", 1),
+    ("I1_NE", "I1_NW", 1),
+    # I2
+    ("I2_NW", "I2_SW", 1),
+    ("I2_SW", "I2_SE", 1),
+    ("I2_SE", "I2_NE", 1),
+    ("I2_NE", "I2_NW", 1),
+    # I3
+    ("I3_NW", "I3_SW", 1),
+    ("I3_SW", "I3_SE", 1),
+    ("I3_SE", "I3_NE", 1),
+    ("I3_NE", "I3_NW", 1),
 ]

@@ -121,12 +121,6 @@ class SimulationUI:
 
                 pygame.draw.line(self.screen, COLOR_ROAD, p1, p2, width)
 
-                # Pătrate la capete pentru colțuri drepte
-                for p in [p1, p2]:
-                    square_rect = pygame.Rect(0, 0, width, width)
-                    square_rect.center = p
-                    pygame.draw.rect(self.screen, COLOR_ROAD, square_rect)
-
         # 2. STRATUL MARCAJE (Linii albe - punctate)
         for start_id, end_id, _ in edges:
             p1 = nodes.get(start_id)
@@ -216,10 +210,10 @@ class SimulationUI:
                 pygame.draw.circle(self.screen, cols[i], p, 7)
 
         # REPARAT: Folosim numele corecte din map_config.py (_STOP)
-        draw_pole(nodes.get("I1_N_STOP"), state_ns, "V", True)
-        draw_pole(nodes.get("I1_S_STOP"), state_ns, "V", False)
-        draw_pole(nodes.get("I1_W_STOP"), state_ew, "H", False)
-        draw_pole(nodes.get("I1_E_STOP"), state_ew, "H", True)
+        draw_pole(nodes.get("I1_NW"), state_ns, "V", True)  # Sus-Stânga
+        draw_pole(nodes.get("I1_SE"), state_ns, "V", False)  # Jos-Dreapta
+        draw_pole(nodes.get("I1_SW"), state_ew, "H", False)  # Jos-Stânga
+        draw_pole(nodes.get("I1_NE"), state_ew, "H", True)
 
     def draw_button(self):
         color = (0, 180, 0) if self.system_on else (180, 0, 0)
@@ -235,20 +229,37 @@ class SimulationUI:
 
         x, y = v_data.get("position_x", 0), v_data.get("position_y", 0)
         v_type = v_data.get("vehicle_type", "Normal")
-        heading = v_data.get("heading", "EAST")
+
+        # NOU: Citim unghiul vizual continuu trimis de agent (Default 0.0)
+        exact_angle = v_data.get("visual_angle", 0.0)
+
         intent = v_data.get("intent", "IDLE")
         speed = v_data.get("speed", 0)
         priority = v_data.get("priority_active", False)
 
+        # Dimensiunile standard ale mașinii (lățime, înălțime) când heading e EST (0 grade)
         w, h = 45, 28
 
         if self.use_images:
+            # Alegem imaginea de bază (Ambulantă sau Normală) orientată spre EST
             base_img = self.img_ambulance if v_type == "Ambulance" else self.img_normal
+            # O scalăm la dimensiunile corecte
             base_img = pygame.transform.scale(base_img, (w, h))
 
-            angle = self.rotation_map.get(heading, 0)
-            rotated_img = pygame.transform.rotate(base_img, angle)
+            # --- REPARARE ROTATIE: Folosim Rotația Continuă ---
+            # Pygame rotește în sens trigonometric invers (counter-clockwise).
+            # Deoarece sistemul de coordonate al ecranului are Y-ul în jos,
+            # math.atan2 funcționează corect, dar trebuie să inversăm unghiul pentru desenare.
+
+            angle_to_draw = -exact_angle
+
+            # Rotim imaginea cu unghiul precis
+            rotated_img = pygame.transform.rotate(base_img, angle_to_draw)
+
+            # Obținem noul rect centralizat (deoarece imaginea rotită își schimbă mărimea)
             rect = rotated_img.get_rect(center=(int(x), int(y)))
+
+            # Desenăm imaginea rotită fluid pe ecran
             self.screen.blit(rotated_img, rect)
         else:
             color = COLOR_AMBULANCE_CAR if v_type == "Ambulance" else COLOR_NORMAL_CAR
