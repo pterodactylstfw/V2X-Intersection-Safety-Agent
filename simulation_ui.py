@@ -37,6 +37,9 @@ class SimulationUI:
         self.system_on = True
         self.button_rect = pygame.Rect(20, 20, 150, 40)
 
+        self.ai_enabled = True
+        self.ai_button_rect = pygame.Rect(190, 20, 150, 40)  
+
         self.COLOR_RED_OFF = (60, 0, 0)
         self.COLOR_YELLOW_OFF = (60, 60, 0)
         self.COLOR_GREEN_OFF = (0, 60, 0)
@@ -306,6 +309,13 @@ class SimulationUI:
         surf = self.font.render(text, True, (255, 255, 255))
         self.screen.blit(surf, (self.button_rect.x + 15, self.button_rect.y + 10))
 
+    def draw_ai_button(self):
+        color = (0, 180, 0) if self.ai_enabled else (180, 0, 0)
+        pygame.draw.rect(self.screen, color, self.ai_button_rect, border_radius=5) 
+        text = "AI: ON" if self.ai_enabled else "AI: OFF"
+        surf = self.font.render(text, True, (255, 255, 255))
+        self.screen.blit(surf, (self.ai_button_rect.x + 40, self.ai_button_rect.y + 10))
+
     def render_vehicle(self, v_data):
         v_id = v_data.get("agent_id", "?")
         if v_id == "Semafor_Centru":
@@ -378,9 +388,14 @@ class SimulationUI:
                         self.system_on = not self.system_on
                         if hasattr(broker, "infrastructure_active"):
                             broker.infrastructure_active = self.system_on
+                    elif self.ai_button_rect.collidepoint(event.pos):
+                        self.ai_enabled = not self.ai_enabled
+                        if hasattr(broker, "ai_enabled"):
+                            broker.ai_enabled = self.ai_enabled
 
             self.draw_environment()
             self.draw_button()
+            self.draw_ai_button()
 
             with broker.lock:
                 to_remove = [
