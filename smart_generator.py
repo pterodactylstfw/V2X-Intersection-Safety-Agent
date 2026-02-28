@@ -4,40 +4,45 @@ import json
 def genereaza_scenariu_oras():
     cadre_scenariu = []
 
-    # Mașina A: Merge spre EST
+    # --- CONFIGURĂRI AXE ȘI BENZI (ROMÂNIA) ---
+    # Drum Orizontal (Y=400): EST (Y:420), VEST (Y:380)
+    # Intersecția 1 (X=400): NORD (X:420), SUD (X:380)
+    # Intersecția 2 (X=1100): NORD (X:1120), SUD (X:1080)
+
+    # 1. Mașina A: Merge spre EST (Dreapta). Banda de JOS.
     a_x, a_y = 0.0, 420.0
-    a_v, a_max, a_acc = 0.0, 4.0, 0.1
+    a_v, a_max = 0.0, 4.0  # Viteza max
 
-    # --- ADĂUGAT: Mașina A2 (Urmăritorul) ---
-    a2_x, a2_y = -120.0, 420.0
-    a2_v, a2_max, a2_acc = 0.0, 4.5, 0.1
-
-    # Ambulanța B: Merge spre SUD
+    # 2. Ambulanța B: Merge spre SUD (În jos) la Intersecția 1. Banda din STÂNGA.
     b_x, b_y = 380.0, 0.0
-    b_v, b_max, b_acc = 0.0, 6.0, 0.2
+    b_v, b_max = 0.0, 5.5
 
-    # Mașina C: Merge spre NORD
+    # 3. Mașina C: Merge spre NORD (În sus) la Intersecția 2. Banda din DREAPTA.
     c_x, c_y = 1120.0, 800.0
-    c_v, c_max, c_acc = 0.0, 3.5, 0.1
+    c_v, c_max = 0.0, 3.8
 
-    for cadru in range(300):
-        # Accelerare
+    # 4. Mașina D (Nouă): Merge spre VEST (Stânga). Banda de SUS.
+    d_x, d_y = 1500.0, 380.0
+    d_v, d_max = 0.0, 4.2
+
+    # Generăm 400 de cadre pentru a acoperi toată harta de 1500px
+    for cadru in range(400):
+        # Accelerare simplă până la viteza maximă
         if a_v < a_max:
-            a_v += a_acc
-        if a2_v < a2_max:
-            a2_v += a2_acc  # Accelerează A2
+            a_v += 0.1
         if b_v < b_max:
-            b_v += b_acc
+            b_v += 0.15
         if c_v < c_max:
-            c_v += c_acc
+            c_v += 0.08
+        if d_v < d_max:
+            d_v += 0.12
 
-        # Mișcare
-        a_x += a_v
-        a2_x += a2_v  # Mișcă A2
-        b_y += b_v
-        c_y -= c_v
+        # Actualizare poziții conform direcției (heading)
+        a_x += a_v  # EST: X crește
+        b_y += b_v  # SUD: Y crește
+        c_y -= c_v  # NORD: Y scade
+        d_x -= d_v  # VEST: X scade
 
-        # Construim cadrul conform Contractului Unificat
         frame = [
             {
                 "agent_id": "Masina_A",
@@ -48,17 +53,6 @@ def genereaza_scenariu_oras():
                 "speed": round(a_v, 2),
                 "heading": "EAST",
                 "driving_style": "Normal",
-            },
-            # --- ADĂUGAT: JSON pentru Masina_A2 ---
-            {
-                "agent_id": "Masina_A2",
-                "vehicle_type": "Normal",
-                "priority_active": False,
-                "position_x": round(a2_x, 2),
-                "position_y": a2_y,
-                "speed": round(a2_v, 2),
-                "heading": "EAST",
-                "driving_style": "Cautious",
             },
             {
                 "agent_id": "Ambulanta_B",
@@ -80,14 +74,26 @@ def genereaza_scenariu_oras():
                 "heading": "NORTH",
                 "driving_style": "Cautious",
             },
+            {
+                "agent_id": "Masina_D",
+                "vehicle_type": "Normal",
+                "priority_active": False,
+                "position_x": round(d_x, 2),
+                "position_y": d_y,
+                "speed": round(d_v, 2),
+                "heading": "WEST",
+                "driving_style": "Normal",
+            },
         ]
         cadre_scenariu.append(frame)
 
-    # Salvare în fișier pentru a fi citit de DataFeeder
     with open("scenariu.json", "w", encoding="utf-8") as f:
         json.dump(cadre_scenariu, f, indent=2, ensure_ascii=False)
 
-    print("Scenariu generat cu succes! Masina_A2 a fost inclusa.")
+    print(f"Scenariu V2X generat cu succes!")
+    print(
+        f"Reguli RO aplicate: Orizontal (Y:420/380), Vertical 1 (X:380), Vertical 2 (X:1120)"
+    )
 
 
 if __name__ == "__main__":
