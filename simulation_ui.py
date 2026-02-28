@@ -146,18 +146,18 @@ class SimulationUI:
                     self.draw_dashed_line_segment(p1, p2, COLOR_LINE, offset=0)
 
         # 3. DESENARE CLĂDIRI (Ajustate ca să nu cadă pe drumurile diagonale)
-        pygame.draw.rect(
-            self.screen, COLOR_WALL, (50, 50, 200, 150)
-        )  # Clădire Stânga-Sus
-        pygame.draw.rect(
-            self.screen, COLOR_WALL, (50, 400, 200, 150)
-        )  # Clădire Centrală-Stânga
-        pygame.draw.rect(
-            self.screen, COLOR_WALL, (1200, 710, 250, 80)
-        )  # Clădire Dreapta-Jos
-        pygame.draw.rect(
-            self.screen, COLOR_WALL, (1150, 100, 250, 300)
-        )  # Clădire Sus-Dreapta (lângă I2/I4)
+        # pygame.draw.rect(
+        #    self.screen, COLOR_WALL, (50, 50, 200, 150)
+        # )  # Clădire Stânga-Sus
+        # pygame.draw.rect(
+        #     self.screen, COLOR_WALL, (50, 400, 200, 150)
+        # )  # Clădire Centrală-Stânga
+        # pygame.draw.rect(
+        #     self.screen, COLOR_WALL, (1200, 710, 250, 80)
+        # )  # Clădire Dreapta-Jos
+        # pygame.draw.rect(
+        #     self.screen, COLOR_WALL, (1150, 100, 250, 300)
+        # )  # Clădire Sus-Dreapta (lângă I2/I4)
 
     def draw_traffic_light_agent(self, current_traffic):
         """Semafoare la Intersecția 1 (Stânga-Jos)."""
