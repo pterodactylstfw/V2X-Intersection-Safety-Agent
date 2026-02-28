@@ -65,94 +65,155 @@ class VehicleAgent:
         )
         return dist / self.speed
 
+    
     def decide_action(self, int_x, int_y):
+        # ==========================================
+        # 0. ACC (Adaptive Cruise Control) - Evitarea Coliziunilor Frontale
+        # ==========================================
+        for other_id, other_data in list(self.memory.items()):
+            if other_data.get("vehicle_type") == "Infrastructure":
+                continue
+            
+            oh = other_data.get("heading", "")
+            if oh == self.heading:  # Verificăm doar mașinile care merg în aceeași direcție
+                ox = other_data.get("position_x", 0)
+                oy = other_data.get("position_y", 0)
+                
+                is_in_front = False
+                # Verificăm dacă e pe aceeași bandă (toleranță de 20px la Y) și e fizic în fața noastră
+                if self.heading == "EAST" and ox > self.position_x and abs(oy - self.position_y) < 20: is_in_front = True
+                elif self.heading == "WEST" and ox < self.position_x and abs(oy - self.position_y) < 20: is_in_front = True
+                elif self.heading == "SOUTH" and oy > self.position_y and abs(ox - self.position_x) < 20: is_in_front = True
+                elif self.heading == "NORTH" and oy < self.position_y and abs(ox - self.position_x) < 20: is_in_front = True
+
+                if is_in_front:
+                    dist_to_front = math.sqrt((ox - self.position_x)**2 + (oy - self.position_y)**2)
+                    if dist_to_front < 90.0:  # 90 pixeli este distanța de siguranță
+                        self._brake(f"ACC: Frânez ca să nu lovesc {other_id}")
+                        return 
+
         # 1. VERIFICARE: Am trecut de intersecție?
         is_past = False
-        if self.heading == "EAST" and self.position_x > int_x + 50:
-            is_past = True
-        if self.heading == "WEST" and self.position_x < int_x - 50:
-            is_past = True
-        if self.heading == "SOUTH" and self.position_y > int_y + 50:
-            is_past = True
-        if self.heading == "NORTH" and self.position_y < int_y - 50:
-            is_past = True
+        if self.heading == "EAST" and self.position_x > int_x + 50: is_past = True
+        if self.heading == "WEST" and self.position_x < int_x - 50: is_past = True
+        if self.heading == "SOUTH" and self.position_y > int_y + 50: is_past = True
+        if self.heading == "NORTH" and self.position_y < int_y - 50: is_past = True
 
         if is_past:
             self._recover_speed()
             self.last_ai_decision = None
             return
 
-        # 2. ACC: Siguranță față de mașina din față (pe aceeași bandă)
-        for other_id, other_data in list(self.memory.items()):
-            if other_data.get("heading") == self.heading:
-                ox, oy = other_data["position_x"], other_data["position_y"]
-                dist = math.sqrt(
-                    (ox - self.position_x) ** 2 + (oy - self.position_y) ** 2
-                )
+        # ==========================================
+        # 2. V2I (GLOSA) & VERIFICARE POZIȚIE SEMAFOR
+        # ==========================================
+        distance_to_center = math.sqrt((int_x - self.position_x)**2 + (int_y - self.position_y)**2)
+        semafor_data = self.memory.get("Semafor_Centru")
+        
+        is_light_here = False
+        if semafor_data:
+            light_x = semafor_data.get("position_x", 400)
+            if abs(int_x - light_x) < 50: 
+                is_light_here = True
+        
+        if semafor_data and is_light_here and self.vehicle_type != "Ambulance":
+            culoare_axa_mea = "GREEN"
+            if self.heading in ["NORTH", "SOUTH"]: 
+                culoare_axa_mea = semafor_data.get("state_NS", "GREEN")
+            elif self.heading in ["EAST", "WEST"]: 
+                culoare_axa_mea = semafor_data.get("state_EW", "GREEN")
+                
+            time_to_change = semafor_data.get("time_to_change", 5.0)
 
-                # Dacă mașina e în față (calcul simplificat pe axe)
-                if dist < 110.0:  # Creștem distanța de siguranță la 110px
-                    if (
-                        (self.heading == "EAST" and ox > self.position_x)
-                        or (self.heading == "SOUTH" and oy > self.position_y)
-                        or (self.heading == "NORTH" and oy < self.position_y)
-                        or (self.heading == "WEST" and ox < self.position_x)
-                    ):
-                        self._brake(f"ACC: Distanță mică față de {other_id}")
-                        return
+            # SCENARIUL A: Este ROȘU în față
+            if culoare_axa_mea == "RED":
+                # FIX: Am modificat de la 150.0 la 80.0 ca să oprească fix la linia intersecției!
+                if distance_to_center < 80.0:
+                    self._brake("V2I: Opresc la Semafor ROȘU")
+                    return 
+                elif distance_to_center < 400.0:
+                    cadre_ramase = time_to_change * 20 
+                    if cadre_ramase > 0:
+                        viteza_optima = distance_to_center / cadre_ramase
+                        viteza_optima = min(self.desired_speed, max(1.0, viteza_optima))
+                        
+                        if self.speed > viteza_optima:
+                            self.speed = max(viteza_optima, self.speed - 0.2)
+                            return
 
-        # 3. INTERSECȚIE: V2V & V2I
-        dist_to_int = math.sqrt(
-            (int_x - self.position_x) ** 2 + (int_y - self.position_y) ** 2
-        )
+            # SCENARIUL B: Este VERDE în față
+            elif culoare_axa_mea == "GREEN":
+                # FIX: Am modificat și aici la 80.0
+                if time_to_change < 1.0 and distance_to_center > 80.0:
+                    self._brake("V2I GLOSA: Nu am timp să prind verdele!")
+                    return
+
+        # ==========================================
+        # 3. PRIORITATE ABSOLUTĂ AMBULANȚĂ (V2V)
+        # ==========================================
+        dist_to_int = distance_to_center
+        
+        if self.vehicle_type != "Ambulance":
+            for other_id, other_data in list(self.memory.items()):
+                if other_data.get("vehicle_type") == "Ambulance":
+                    ox = other_data.get("position_x", 0)
+                    oy = other_data.get("position_y", 0)
+                    oh = other_data.get("heading", "")
+                    o_speed = other_data.get("speed", 0)
+                    o_dist_to_int = math.sqrt((int_x - ox)**2 + (int_y - oy)**2)
+                    
+                    amb_past = False
+                    if oh == "SOUTH" and oy > int_y + 40: amb_past = True
+                    if oh == "NORTH" and oy < int_y - 40: amb_past = True
+                    if oh == "EAST" and ox > int_x + 40: amb_past = True
+                    if oh == "WEST" and ox < int_x - 40: amb_past = True
+                    
+                    if not amb_past and o_speed > 1.0 and o_dist_to_int < 350.0:
+                        # FIX: Nu mai oprim oriunde! 
+                        # Dacă suntem între 60 și 120px, punem frână ca să stăm la linie
+                        if 60.0 < dist_to_int < 120.0: 
+                            self._brake("Cedez trecerea Ambulanței!")
+                            return 
+                        # Dacă suntem departe (> 120px), doar încetinim elegant ca să ne apropiem de linie
+                        elif dist_to_int >= 120.0:
+                            self.speed = max(1.5, self.speed - 0.2)
+                            return
+
         if dist_to_int > 250.0:
             self._recover_speed()
             return
 
-        # --- LOGICA PENTRU SEMAFOR (V2I) ---
-        used_infrastructure = False
+        # ==========================================
+        # 4. LOGICA PENTRU SEMAFOR (V2I) - Fără GLOSA
+        # ==========================================
         for other_id, other_data in list(self.memory.items()):
             if other_data.get("vehicle_type") == "Infrastructure":
-                used_infrastructure = True
+                
+                light_x = other_data.get("position_x", 400)
+                if abs(int_x - light_x) > 50:
+                    continue 
 
                 if self.heading in ["NORTH", "SOUTH"]:
                     light_state = other_data.get("state_NS", "YELLOW_BLINKING")
                 else:
                     light_state = other_data.get("state_EW", "YELLOW_BLINKING")
 
-                # Dacă semaforul e pe avarie, trecem la V2V direct
                 if light_state == "YELLOW_BLINKING":
-                    used_infrastructure = False
-                    break
+                    break 
 
-                # La ROȘU sau GALBEN
                 if light_state in ["RED", "YELLOW"]:
-                    # Frânăm doar dacă nu am intrat deja adânc în intersecție (< 30px)
-                    # Astfel, forțăm mașina să respecte roșul și să nu intre în V2V
-                    if dist_to_int > 30.0:
-                        # Printăm în consolă să vedem clar de ce oprește
-                        # print(f"[{self.agent_id}] Opresc la SEMAFOR ({light_state}). Distanța: {dist_to_int:.1f}")
+                    if self.vehicle_type == "Ambulance":
+                        pass 
+                    # FIX: Frânăm de urgență la roșu doar dacă suntem între 50 și 150px de intersecție
+                    elif 50.0 < dist_to_int < 150.0:
                         self._brake(f"Semafor {light_state}")
                         return
 
-                # La VERDE
                 if light_state == "GREEN":
-                    # print(f"[{self.agent_id}] Am VERDE, trec fără V2V!")
                     break
-
-            if other_data.get("vehicle_type") == "Ambulance":
-                # REPARAȚIE: Cedăm doar dacă ambulanța are viteză (se deplasează)
-                # SAU dacă e deja foarte aproape de centrul intersecției
-                o_speed = other_data.get("speed", 0)
-                o_dist_to_int = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
-
-                if o_speed > 1.0 or o_dist_to_int < 50:
-                    self._brake("Prioritate Ambulanță în mișcare")
-                    return
-                else:
-                    # Dacă ambulanța stă la roșu, o ignorăm și mergem pe treaba noastră
-                    continue
-
+        # ==========================================
+        # 5. NEGOCIERE V2V / AI (Când nu e semafor sau e pe avarie)
+        # ==========================================
         my_ttc = self.calculate_ttc(int_x, int_y)
         conflict_detected = False
 
@@ -167,14 +228,11 @@ class VehicleAgent:
 
             # IGNORĂM mașinile care AU TRECUT de centru
             other_past = False
-            if oh == "SOUTH" and oy > int_y + 40:
-                other_past = True
-            if oh == "NORTH" and oy < int_y - 40:
-                other_past = True
-            if oh == "EAST" and ox > int_x + 40:
-                other_past = True
-            if oh == "WEST" and ox < int_x - 40:
-                other_past = True
+            if oh == "SOUTH" and oy > int_y + 40: other_past = True
+            if oh == "NORTH" and oy < int_y - 40: other_past = True
+            if oh == "EAST" and ox > int_x + 40: other_past = True
+            if oh == "WEST" and ox < int_x - 40: other_past = True
+            
             if other_past:
                 continue
 

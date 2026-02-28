@@ -78,26 +78,6 @@ def run_simulation():
         )
 
     def background_task():
-        dt = 0.05  # Recomandat 0.05 pentru stabilitate pe Mac
-        while True:
-            for a_id, agent in agenti.items():
-                # 1. Comunicare V2X
-                traffic = broker.receive(a_id)
-                for o_id, o_data in traffic.items():
-                    agent.receive_v2x_message(o_data)
-
-                # 2. Logica de decizie: Mașina alege cea mai apropiată intersecție
-                # Avem Intersecția 1 la x=400 și Intersecția 2 la x=1100
-                target_int_x = 400 if agent.position_x < 750 else 1100
-                agent.decide_action(target_int_x, 400)
-
-                agent.update_position(dt)
-
-                # 3. Publicăm starea
-                broker.publish(a_id, agent.get_emergency_status())
-            time.sleep(dt)
-
-    def background_task():
         dt = 0.05
         while True:
             for a_id, agent in list(agenti.items()):
