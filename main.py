@@ -2,10 +2,15 @@ import threading
 from v2x_network import V2XBroker, DataFeeder
 from vehicle_agent import VehicleAgent
 from simulation_ui import SimulationUI
+from traffic_light import IntelligentTrafficLight
 
 def run_simulation():
     # 1. Infrastructura
     broker = V2XBroker()
+
+    semafor = IntelligentTrafficLight(broker)
+    semafor.start()
+
     ui = SimulationUI()
     
     # 2. Agenții
