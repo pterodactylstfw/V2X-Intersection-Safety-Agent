@@ -168,7 +168,7 @@ class SimulationUI:
             
             # Culori becuri
             r_col = COLOR_RED if state == "RED" and self.system_on else (60, 0, 0)
-            y_col = (60, 60, 0)
+            y_col = COLOR_YELLOW if state == "YELLOW" and self.system_on else (60, 60, 0)
             g_col = COLOR_GREEN if state == "GREEN" and self.system_on else (0, 60, 0)
             
             if not self.system_on and (pygame.time.get_ticks() // 500) % 2 == 0:
