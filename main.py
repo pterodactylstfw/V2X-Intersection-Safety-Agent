@@ -21,41 +21,80 @@ def run_simulation():
     # 2. Agenții
     # 2. Agenții AI (Folosim parametri numiți pentru a evita erorile de poziție)
     # 2. Agenții AI (fără parametrul 'speed' care a fost scos de colegul tău)
-    agent_a = VehicleAgent(
-        agent_id="Masina_A",
-        start_node="W_START",  # Pleacă din stânga
-        target_node="E_END",  # Merge tot înainte spre dreapta
+    # ==========================================
+    # 2. SCENARII DE TESTARE (Haos Controlat)
+    # ==========================================
+
+    # --- SCENARIUL 1: ACC (Frânare la mașina din față) ---
+    agent_lider = VehicleAgent(
+        agent_id="Masina_Lider",
+        start_node="W_START",
+        target_node="E_END",
+        desired_speed=35.0, # Merge încet
+    )
+
+    agent_urmaritor = VehicleAgent(
+        agent_id="Masina_Urmaritor",
+        start_node="W_START",
+        target_node="E_END",
+        desired_speed=85.0, # Vine glonț din spate
+    )
+    # TRUC: O mutăm manual 150px mai în spate ca să vedem cum o ajunge din urmă și frânează
+    agent_urmaritor.position_x -= 150 
+
+    # --- SCENARIUL 2: Prioritate de Dreapta ---
+    # Vine de jos spre sus (SUD -> NORD). Se va întâlni cu Liderul la I1.
+    # Liderul merge spre EST, deci agent_s1 vine din dreapta Liderului! Liderul trebuie să frâneze.
+    agent_s1 = VehicleAgent(
+        agent_id="Masina_Sud1",
+        start_node="S1_START",
+        target_node="NW_END",
+        desired_speed=55.0,
+    )
+    agent_s1.position_y += 80 # O întârziem puțin ca să se întâlnească fix în mijloc cu Liderul
+
+    # Vine din Dreapta spre Stânga (EST -> VEST). 
+    agent_est = VehicleAgent(
+        agent_id="Masina_Est",
+        start_node="E_START",
+        target_node="W_END",
+        desired_speed=65.0,
+    )
+
+    # Vine de jos spre sus (SUD -> NORD) la I2.
+    # Se va intersecta cu Masina_Est.
+    agent_s2 = VehicleAgent(
+        agent_id="Masina_Sud2",
+        start_node="S2_START",
+        target_node="NW_END",
         desired_speed=60.0,
     )
 
-    agent_a2 = VehicleAgent(
-        agent_id="Masina_A2",
-        start_node="NW_START",  # Pleacă de sus
-        target_node="S1_END",  # Merge în jos
-        desired_speed=75.5,
+    # Vine de sus spre jos (NORD -> SUD).
+    agent_nord = VehicleAgent(
+        agent_id="Masina_Nord",
+        start_node="NW_START",
+        target_node="S1_END",
+        desired_speed=60.0,
     )
 
-    agent_b = VehicleAgent(
-        agent_id="Ambulanta_B",
-        start_node="S2_START",  # Pleacă de jos-dreapta
-        target_node="W_END",  # Trece diagonala și iese prin stânga
-        desired_speed=60.0,
+    # Și adăugăm Ambulanța pe fuziune (Zipper Merge) ca să testăm filtrul V2X
+    agent_amb = VehicleAgent(
+        agent_id="Ambulanta_VIP",
+        start_node="NE_ONEWAY_START",
+        target_node="S2_END",
+        desired_speed=75.0,
         vehicle_type="Ambulance",
-        driving_style="Aggressive",
-    )
-
-    agent_c = VehicleAgent(
-        agent_id="Masina_C",
-        start_node="NE_ONEWAY_START",  # Pleacă de pe sensul unic
-        target_node="S2_END",  # Merge spre sud
-        desired_speed=60.8,
     )
 
     agenti = {
-        "Masina_A": agent_a,
-        "Masina_A2": agent_a2,
-        "Ambulanta_B": agent_b,
-        "Masina_C": agent_c,
+        "Masina_Lider": agent_lider,
+        "Masina_Urmaritor": agent_urmaritor,
+        "Masina_Sud1": agent_s1,
+        "Masina_Est": agent_est,
+        "Masina_Sud2": agent_s2,
+        "Masina_Nord": agent_nord,
+        "Ambulanta_VIP": agent_amb
     }
 
     # Agenți care au fost deja vizibili cel puțin o dată pe ecran
@@ -88,16 +127,19 @@ def run_simulation():
                     agent.receive_v2x_message(o_data)
 
                 # 2. Alegem dinamic CEA MAI APROPIATĂ intersecție
-                closest_int = intersections[0]
-                min_dist = float("inf")
-                for ix, iy in intersections:
-                    dist = (agent.position_x - ix) ** 2 + (agent.position_y - iy) ** 2
-                    if dist < min_dist:
-                        min_dist = dist
-                        closest_int = (ix, iy)
+                # 2. Alegem intersecția către care se îndreaptă mașina BAZAT PE RUTĂ
+                target_int = (agent.position_x, agent.position_y) # Fallback
+                
+                # Căutăm în viitorul rutei ce intersecție urmează
+                for idx in range(agent.current_node_index + 1, len(agent.route)):
+                    n = agent.route[idx]
+                    if "I1" in n: target_int = (400, 650); break
+                    elif "I2" in n: target_int = (1100, 650); break
+                    elif "I3" in n: target_int = (400, 300); break
+                    elif "MERGE" in n or "I4" in n: target_int = (770, 455); break
 
                 # Trimitem coordonatele corecte către AI
-                agent.decide_action(closest_int[0], closest_int[1])
+                agent.decide_action(target_int[0], target_int[1])
 
                 agent.update_position(dt)
 
