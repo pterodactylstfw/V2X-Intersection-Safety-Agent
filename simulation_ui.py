@@ -51,6 +51,26 @@ class SimulationUI:
 
         self.rotation_map = {"EAST": 0, "NORTH": 90, "WEST": 180, "SOUTH": 270}
 
+    def draw_dashed_line(
+        self, surface, color, start_pos, end_pos, width=2, dash_length=20
+    ):
+        x1, y1 = start_pos
+        x2, y2 = end_pos
+        dl = math.hypot(x2 - x1, y2 - y1)
+        if dl == 0:
+            return
+
+        dashes = int(dl / dash_length)
+        for i in range(dashes):
+            if i % 2 == 0:  # Desenăm doar segmentele pare (efectul de "punctat")
+                start_x = x1 + (x2 - x1) * (i / dashes)
+                start_y = y1 + (y2 - y1) * (i / dashes)
+                end_x = x1 + (x2 - x1) * ((i + 1) / dashes)
+                end_y = y1 + (y2 - y1) * ((i + 1) / dashes)
+                pygame.draw.line(
+                    surface, color, (start_x, start_y), (end_x, end_y), width
+                )
+
     def is_outside_bounds(self, v_data):
         if v_data.get("vehicle_type") == "Infrastructure":
             return False
@@ -96,68 +116,65 @@ class SimulationUI:
             current_y += unit_dy * (dash_length + gap_length)
 
     def draw_environment(self):
-        """Desenează harta curățată și corectată."""
+        """Desenează harta clasică, curată, exact ca într-o schiță."""
         self.screen.fill(COLOR_BACKGROUND)
 
-        # Funcție inteligentă pentru a detecta dacă drumul e secundar
-        def is_main_segment(n1, n2):
-            secondary_keywords = ["NW_", "NE_", "I3_", "I4_", "DIAG", "MERGE"]
-            for kw in secondary_keywords:
-                if kw in n1 or kw in n2:
-                    return False
-            return True  # Dacă nu e secundar, sigur e drumul principal
-
-        # 1. STRATUL ASFALT (Linii groase și Pătrate la îmbinări)
-        for start_id, end_id, _ in edges:
-            p1 = nodes.get(start_id)
-            p2 = nodes.get(end_id)
-
+        # ====================================================
+        # 1. STRATUL ASFALT: Desenăm fiecare bandă individual
+        # ====================================================
+        # Grosimea de 40px per bandă, așezate unele lângă altele pe coordonate,
+        # acoperă și formează perfect intersecțiile la 90 de grade și fuziunile!
+        for u, v, _ in edges:
+            p1 = nodes.get(u)
+            p2 = nodes.get(v)
             if p1 and p2:
-                width = (
-                    ROAD_WIDTH_MAIN
-                    if is_main_segment(start_id, end_id)
-                    else ROAD_WIDTH_SECONDARY
-                )
+                pygame.draw.line(self.screen, COLOR_ROAD, p1, p2, ROAD_WIDTH_SECONDARY)
 
-                pygame.draw.line(self.screen, COLOR_ROAD, p1, p2, width)
+        # ====================================================
+        # 2. STRATUL MARCAJE (Linii punctate pe axul drumurilor)
+        # ====================================================
+        drawn_dashed = set()
+        for u, v, _ in edges:
+            if (u, v) in drawn_dashed:
+                continue
 
-        # 2. STRATUL MARCAJE (Linii albe - punctate)
-        for start_id, end_id, _ in edges:
-            p1 = nodes.get(start_id)
-            p2 = nodes.get(end_id)
+            # Sărim peste liniile punctate din interiorul intersecțiilor (ex: I1_NW -> I1_SW)
+            # Vrem ca intersecția să fie goală pe mijloc, exact ca în realitate.
+            if u.startswith("I") and v.startswith("I") and u[:2] == v[:2]:
+                continue
 
-            if p1 and p2:
-                is_main = is_main_segment(start_id, end_id)
-                # Nu desenăm marcaje în intersecția de Merge I4
-                is_i4_related = (
-                    "I4_" in start_id
-                    or "I4_" in end_id
-                    or "MERGE_POINT" in start_id
-                    or "MERGE_POINT" in end_id
-                )
+            p1 = nodes.get(u)
+            p2 = nodes.get(v)
+            if not p1 or not p2:
+                continue
 
-                if is_main:
-                    # Drum principal (2 benzi = offset de 20)
-                    offset = ROAD_WIDTH_MAIN // 4
-                    self.draw_dashed_line_segment(p1, p2, COLOR_LINE, offset=offset)
-                    self.draw_dashed_line_segment(p1, p2, COLOR_LINE, offset=-offset)
-                elif not is_i4_related:
-                    # Drum secundar (1 bandă pe mijloc)
-                    self.draw_dashed_line_segment(p1, p2, COLOR_LINE, offset=0)
+            # Căutăm perechea (sensul opus) pentru a trasa linia punctată fix între ele
+            for u2, v2, _ in edges:
+                if (u2, v2) in drawn_dashed or (u2, v2) == (u, v):
+                    continue
 
-        # 3. DESENARE CLĂDIRI (Ajustate ca să nu cadă pe drumurile diagonale)
-        # pygame.draw.rect(
-        #    self.screen, COLOR_WALL, (50, 50, 200, 150)
-        # )  # Clădire Stânga-Sus
-        # pygame.draw.rect(
-        #     self.screen, COLOR_WALL, (50, 400, 200, 150)
-        # )  # Clădire Centrală-Stânga
-        # pygame.draw.rect(
-        #     self.screen, COLOR_WALL, (1200, 710, 250, 80)
-        # )  # Clădire Dreapta-Jos
-        # pygame.draw.rect(
-        #     self.screen, COLOR_WALL, (1150, 100, 250, 300)
-        # )  # Clădire Sus-Dreapta (lângă I2/I4)
+                p1_rev = nodes.get(u2)
+                p2_rev = nodes.get(v2)
+                if not p1_rev or not p2_rev:
+                    continue
+
+                # Verificăm dacă sunt benzi paralele (distanța dintre capete e mică)
+                dist_starts = math.hypot(p1_rev[0] - p2[0], p1_rev[1] - p2[1])
+                dist_ends = math.hypot(p2_rev[0] - p1[0], p2_rev[1] - p1[1])
+
+                if dist_starts < 100 and dist_ends < 100:
+                    # Am găsit contrasensul! Calculăm axul drumului (mijlocul perfect).
+                    center_start = ((p1[0] + p2_rev[0]) / 2, (p1[1] + p2_rev[1]) / 2)
+                    center_end = ((p2[0] + p1_rev[0]) / 2, (p2[1] + p1_rev[1]) / 2)
+
+                    self.draw_dashed_line_segment(
+                        center_start, center_end, COLOR_LINE, offset=0
+                    )
+
+                    # Marcăm ambele benzi ca procesate
+                    drawn_dashed.add((u, v))
+                    drawn_dashed.add((u2, v2))
+                    break
 
     def draw_traffic_light_agent(self, current_traffic):
         """Semafoare la Intersecția 1 (Stânga-Jos)."""
