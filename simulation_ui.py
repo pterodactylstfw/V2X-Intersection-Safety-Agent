@@ -23,6 +23,7 @@ COLOR_GREEN = (0, 255, 0)
 COLOR_YELLOW = (255, 165, 0)
 COLOR_GRASS = (69, 108, 46)
 
+
 class SimulationUI:
     def __init__(self, title="V2X Stylized Grid Simulator"):
         pygame.init()
@@ -38,7 +39,10 @@ class SimulationUI:
         self.button_rect = pygame.Rect(20, 20, 150, 40)
 
         self.ai_enabled = True
-        self.ai_button_rect = pygame.Rect(190, 20, 150, 40)  
+        self.ai_button_rect = pygame.Rect(190, 20, 150, 40)
+
+        # NOU: Butonul pentru căprioară (sub cel de sistem)
+        self.animal_button_rect = pygame.Rect(20, 70, 150, 40)
 
         self.COLOR_RED_OFF = (60, 0, 0)
         self.COLOR_YELLOW_OFF = (60, 60, 0)
@@ -47,6 +51,8 @@ class SimulationUI:
         try:
             self.img_normal = pygame.image.load("car.png").convert_alpha()
             self.img_ambulance = pygame.image.load("ambulance.png").convert_alpha()
+            # NOU: Încărcăm poza cu căprioara
+            self.img_deer = pygame.image.load("deer.png").convert_alpha()
             self.use_images = True
         except Exception as e:
             print(f"Imagini negăsite. Folosesc forme geometrice. Eroare: {e}")
@@ -75,6 +81,9 @@ class SimulationUI:
                 )
 
     def is_outside_bounds(self, v_data):
+        # PROTECȚIE CĂPRIOARĂ: Evită erorile când datele lipsesc
+        if not v_data:
+            return True
         if v_data.get("vehicle_type") == "Infrastructure":
             return False
         x, y = v_data.get("position_x", 0), v_data.get("position_y", 0)
@@ -159,10 +168,24 @@ class SimulationUI:
     def draw_environment(self):
         """Desenează harta clasică, curată, exact ca într-o schiță."""
         self.screen.fill(COLOR_BACKGROUND)
-        # iarba 
-        pygame.draw.polygon(self.screen, COLOR_GRASS, [(1000, 0), (SCREEN_WIDTH, 0), (SCREEN_WIDTH, SCREEN_HEIGHT), (600, SCREEN_HEIGHT)], width=0)
-        pygame.draw.polygon(self.screen, COLOR_BACKGROUND, [(0, 100), (0, SCREEN_HEIGHT), (1140, 800), (1140, 675)], width=0)
-
+        # iarba
+        pygame.draw.polygon(
+            self.screen,
+            COLOR_GRASS,
+            [
+                (1000, 0),
+                (SCREEN_WIDTH, 0),
+                (SCREEN_WIDTH, SCREEN_HEIGHT),
+                (600, SCREEN_HEIGHT),
+            ],
+            width=0,
+        )
+        pygame.draw.polygon(
+            self.screen,
+            COLOR_BACKGROUND,
+            [(0, 100), (0, SCREEN_HEIGHT), (1140, 800), (1140, 675)],
+            width=0,
+        )
 
         # ====================================================
         # 1. STRATUL ASFALT: Desenăm fiecare bandă individual
@@ -176,18 +199,37 @@ class SimulationUI:
                 pygame.draw.line(self.screen, COLOR_ROAD, p1, p2, ROAD_WIDTH_SECONDARY)
 
         # DESENARE CLĂDIRI (Ajustate ca să nu cadă pe drumurile diagonale)
-        self.draw_building_along_road(nodes["W_START"], nodes["I1_SW"], width=50, offset=40, node_offset=100)
-        self.draw_building_along_road(nodes["MERGE_UP"], nodes["I3_NE"], width=50, offset=40, node_offset=50)
-        self.draw_building_along_road(nodes["MERGE_UP"], nodes["NE_ONEWAY_START"], width=50, offset=40, node_offset=110)
-        self.draw_building_along_road(nodes["NW_START"], nodes["I3_NW"], width=50, offset=40, node_offset=100)
-        self.draw_building_along_road(nodes["I3_SW"], nodes["I1_NW"], width=50, offset=40, node_offset=100)
-        self.draw_building_along_road(nodes["W_END"], nodes["I1_NW"], width=50, offset=-90, node_offset=60)
-        self.draw_building_along_road(nodes["I1_SE"], nodes["I2_SW"], width=50, offset=40, node_offset=100)
-        self.draw_building_along_road(nodes["I1_NE"], nodes["I3_SE"], width=50, offset=40, node_offset=100)
-        self.draw_building_along_road(nodes["I3_SE"], nodes["I2_NW"], width=40, offset=40, node_offset=250)
-
-        # pygame.draw.polygon(self.screen, COLOR_WALL, [(270, 350), (270, 370), (370, 370), (370, 350)], width=0)
-
+        self.draw_building_along_road(
+            nodes["W_START"], nodes["I1_SW"], width=50, offset=40, node_offset=100
+        )
+        self.draw_building_along_road(
+            nodes["MERGE_UP"], nodes["I3_NE"], width=50, offset=40, node_offset=50
+        )
+        self.draw_building_along_road(
+            nodes["MERGE_UP"],
+            nodes["NE_ONEWAY_START"],
+            width=50,
+            offset=40,
+            node_offset=110,
+        )
+        self.draw_building_along_road(
+            nodes["NW_START"], nodes["I3_NW"], width=50, offset=40, node_offset=100
+        )
+        self.draw_building_along_road(
+            nodes["I3_SW"], nodes["I1_NW"], width=50, offset=40, node_offset=100
+        )
+        self.draw_building_along_road(
+            nodes["W_END"], nodes["I1_NW"], width=50, offset=-90, node_offset=60
+        )
+        self.draw_building_along_road(
+            nodes["I1_SE"], nodes["I2_SW"], width=50, offset=40, node_offset=100
+        )
+        self.draw_building_along_road(
+            nodes["I1_NE"], nodes["I3_SE"], width=50, offset=40, node_offset=100
+        )
+        self.draw_building_along_road(
+            nodes["I3_SE"], nodes["I2_NW"], width=40, offset=40, node_offset=250
+        )
 
         # ====================================================
         # 2. STRATUL MARCAJE (Linii punctate pe axul drumurilor)
@@ -284,34 +326,39 @@ class SimulationUI:
                 pygame.draw.circle(self.screen, cols[i], p, 7)
 
         # Mută semafoarele "în exterior" (dreapta benzii din dreapta, per colț)
-        # Ajustează valoarea asta dacă le vrei mai aproape/mai departe de bandă:
         OFFSET_X = 40
         OFFSET_Y = 60
 
-        # Pentru axa NS folosim corp vertical ("V")
-        # I1_NW e colț sus-stânga -> exterior = sus + stânga (flip pentru Green on top)
-        draw_pole(nodes.get("I1_NW"), state_ns, "V", dx=-OFFSET_X, dy=-OFFSET_Y, flip=True)
-
-        # I1_SE e colț jos-dreapta -> exterior = jos + dreapta
+        draw_pole(
+            nodes.get("I1_NW"), state_ns, "V", dx=-OFFSET_X, dy=-OFFSET_Y, flip=True
+        )
         draw_pole(nodes.get("I1_SE"), state_ns, "V", dx=+OFFSET_X, dy=+OFFSET_Y)
-
-        # Pentru axa EW folosim corp orizontal ("H")
-        # I1_SW e colț jos-stânga -> exterior = jos + stânga (flip pentru Green on left)
-        draw_pole(nodes.get("I1_SW"), state_ew, "H", dx=-OFFSET_Y, dy=+OFFSET_X, flip=True)
-
-        # I1_NE e colț sus-dreapta -> exterior = sus + dreapta
+        draw_pole(
+            nodes.get("I1_SW"), state_ew, "H", dx=-OFFSET_Y, dy=+OFFSET_X, flip=True
+        )
         draw_pole(nodes.get("I1_NE"), state_ew, "H", dx=+OFFSET_Y, dy=-OFFSET_X)
 
     def draw_button(self):
+        # Buton Sistem
         color = (0, 180, 0) if self.system_on else (180, 0, 0)
         pygame.draw.rect(self.screen, color, self.button_rect, border_radius=5)
         text = "SISTEM: ON" if self.system_on else "SISTEM: OFF"
         surf = self.font.render(text, True, (255, 255, 255))
         self.screen.blit(surf, (self.button_rect.x + 15, self.button_rect.y + 10))
 
+        # NOU: Buton Căprioară
+        pygame.draw.rect(
+            self.screen, (139, 69, 19), self.animal_button_rect, border_radius=5
+        )
+        text_animal = self.small_font.render("SPAWN CĂPRIOARĂ", True, (255, 255, 255))
+        self.screen.blit(
+            text_animal,
+            (self.animal_button_rect.x + 10, self.animal_button_rect.y + 12),
+        )
+
     def draw_ai_button(self):
         color = (0, 180, 0) if self.ai_enabled else (180, 0, 0)
-        pygame.draw.rect(self.screen, color, self.ai_button_rect, border_radius=5) 
+        pygame.draw.rect(self.screen, color, self.ai_button_rect, border_radius=5)
         text = "AI: ON" if self.ai_enabled else "AI: OFF"
         surf = self.font.render(text, True, (255, 255, 255))
         self.screen.blit(surf, (self.ai_button_rect.x + 40, self.ai_button_rect.y + 10))
@@ -324,40 +371,44 @@ class SimulationUI:
         x, y = v_data.get("position_x", 0), v_data.get("position_y", 0)
         v_type = v_data.get("vehicle_type", "Normal")
 
-        # NOU: Citim unghiul vizual continuu trimis de agent (Default 0.0)
-        exact_angle = v_data.get("visual_angle", 0.0)
+        # ==========================================
+        # NOU: Desenăm Căprioara (Imaginea)
+        # ==========================================
+        if v_type == "Animal":
+            if self.use_images and hasattr(self, "img_deer"):
+                # Scalăm poza căprioarei ca să nu fie uriașă
+                deer_scaled = pygame.transform.scale(self.img_deer, (35, 35))
+                rect = deer_scaled.get_rect(center=(int(x), int(y)))
+                self.screen.blit(deer_scaled, rect)
+            else:
+                # Dacă nu găsește poza din vreo eroare, pune un cerculeț maro
+                pygame.draw.circle(self.screen, (139, 69, 19), (int(x), int(y)), 10)
 
+            # Scriem numele "Căprioară" deasupra ei
+            animal_text = self.small_font.render(v_id, True, (255, 150, 150))
+            self.screen.blit(animal_text, (int(x) - 25, int(y) - 30))
+            return  # Dăm 'return' aici ca să nu încerce să mai deseneze o mașină peste ea!
+        # ==========================================
+
+        exact_angle = v_data.get("visual_angle", 0.0)
         intent = v_data.get("intent", "IDLE")
         speed = v_data.get("speed", 0)
         priority = v_data.get("priority_active", False)
+        heading = v_data.get("heading", "EAST")  # Fallback for old mode
 
-        # Dimensiunile standard ale mașinii (lățime, înălțime) când heading e EST (0 grade)
         w, h = 45, 28
 
         if self.use_images:
-            # Alegem imaginea de bază (Ambulantă sau Normală) orientată spre EST
             base_img = self.img_ambulance if v_type == "Ambulance" else self.img_normal
-            # O scalăm la dimensiunile corecte
             base_img = pygame.transform.scale(base_img, (w, h))
 
-            # --- REPARARE ROTATIE: Folosim Rotația Continuă ---
-            # Pygame rotește în sens trigonometric invers (counter-clockwise).
-            # Deoarece sistemul de coordonate al ecranului are Y-ul în jos,
-            # math.atan2 funcționează corect, dar trebuie să inversăm unghiul pentru desenare.
-
             angle_to_draw = -exact_angle
-
-            # Rotim imaginea cu unghiul precis
             rotated_img = pygame.transform.rotate(base_img, angle_to_draw)
-
-            # Obținem noul rect centralizat (deoarece imaginea rotită își schimbă mărimea)
             rect = rotated_img.get_rect(center=(int(x), int(y)))
-
-            # Desenăm imaginea rotită fluid pe ecran
             self.screen.blit(rotated_img, rect)
         else:
             color = COLOR_AMBULANCE_CAR if v_type == "Ambulance" else COLOR_NORMAL_CAR
-            vw, vh = (w, h) if heading in ["EAST", "WEST"] else (h, w)
+            vw, vh = (w, h) if exact_angle == 0 or exact_angle == 180 else (h, w)
             pygame.draw.rect(
                 self.screen, color, (int(x) - vw // 2, int(y) - vh // 2, vw, vh)
             )
@@ -392,6 +443,11 @@ class SimulationUI:
                         self.ai_enabled = not self.ai_enabled
                         if hasattr(broker, "ai_enabled"):
                             broker.ai_enabled = self.ai_enabled
+
+                    # NOU: Detecție click pentru butonul căprioarei
+                    if self.animal_button_rect.collidepoint(event.pos):
+                        if hasattr(broker, "trigger_animal_event"):
+                            broker.trigger_animal_event()
 
             self.draw_environment()
             self.draw_button()

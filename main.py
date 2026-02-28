@@ -4,6 +4,7 @@ from traffic_light import TrafficLightAgent
 from v2x_network import V2XBroker
 from vehicle_agent import VehicleAgent
 from simulation_ui import SimulationUI
+from animal_obstacle import AnimalObstacle
 
 
 def run_simulation():
@@ -13,6 +14,13 @@ def run_simulation():
 
     semafor = TrafficLightAgent(broker)
     semafor.start()
+
+    caprioara = AnimalObstacle(1350, 610)
+
+    def trigger_animal():
+        caprioara.trigger()
+
+    broker.trigger_animal_event = trigger_animal
 
     # 2. Agenții (Toți cei 4 conform regulilor de circulație RO)
 
@@ -30,17 +38,17 @@ def run_simulation():
         agent_id="Masina_Lider",
         start_node="W_START",
         target_node="E_END",
-        desired_speed=35.0, # Merge încet
+        desired_speed=35.0,  # Merge încet
     )
 
     agent_urmaritor = VehicleAgent(
         agent_id="Masina_Urmaritor",
         start_node="W_START",
         target_node="E_END",
-        desired_speed=85.0, # Vine glonț din spate
+        desired_speed=85.0,  # Vine glonț din spate
     )
     # TRUC: O mutăm manual 150px mai în spate ca să vedem cum o ajunge din urmă și frânează
-    agent_urmaritor.position_x -= 150 
+    agent_urmaritor.position_x -= 150
 
     # --- SCENARIUL 2: Prioritate de Dreapta ---
     # Vine de jos spre sus (SUD -> NORD). Se va întâlni cu Liderul la I1.
@@ -51,9 +59,11 @@ def run_simulation():
         target_node="NW_END",
         desired_speed=55.0,
     )
-    agent_s1.position_y += 80 # O întârziem puțin ca să se întâlnească fix în mijloc cu Liderul
+    agent_s1.position_y += (
+        80  # O întârziem puțin ca să se întâlnească fix în mijloc cu Liderul
+    )
 
-    # Vine din Dreapta spre Stânga (EST -> VEST). 
+    # Vine din Dreapta spre Stânga (EST -> VEST).
     agent_est = VehicleAgent(
         agent_id="Masina_Est",
         start_node="E_START",
@@ -94,7 +104,7 @@ def run_simulation():
         "Masina_Est": agent_est,
         "Masina_Sud2": agent_s2,
         "Masina_Nord": agent_nord,
-        "Ambulanta_VIP": agent_amb
+        "Ambulanta_VIP": agent_amb,
     }
 
     # Agenți care au fost deja vizibili cel puțin o dată pe ecran
@@ -120,7 +130,22 @@ def run_simulation():
         ]
 
         while True:
+
+            caprioara.update(dt)
+            status_caprioara = caprioara.get_status()
+
+            if status_caprioara is not None:
+                # Dacă e pe stradă, îi publicăm datele
+                broker.publish(caprioara.agent_id, status_caprioara)
+            else:
+                # Dacă e ascunsă, ne asigurăm că e ștearsă din rețea ca să nu dea eroare
+                with broker.lock:
+                    broker.vehicles_status.pop(caprioara.agent_id, None)
+
             for a_id, agent in list(agenti.items()):
+
+                agent.memory.clear()
+
                 # 1. V2X
                 traffic = broker.receive(a_id)
                 for o_id, o_data in traffic.items():
@@ -128,15 +153,23 @@ def run_simulation():
 
                 # 2. Alegem dinamic CEA MAI APROPIATĂ intersecție
                 # 2. Alegem intersecția către care se îndreaptă mașina BAZAT PE RUTĂ
-                target_int = (agent.position_x, agent.position_y) # Fallback
-                
+                target_int = (agent.position_x, agent.position_y)  # Fallback
+
                 # Căutăm în viitorul rutei ce intersecție urmează
                 for idx in range(agent.current_node_index + 1, len(agent.route)):
                     n = agent.route[idx]
-                    if "I1" in n: target_int = (400, 650); break
-                    elif "I2" in n: target_int = (1100, 650); break
-                    elif "I3" in n: target_int = (400, 300); break
-                    elif "MERGE" in n or "I4" in n: target_int = (770, 455); break
+                    if "I1" in n:
+                        target_int = (400, 650)
+                        break
+                    elif "I2" in n:
+                        target_int = (1100, 650)
+                        break
+                    elif "I3" in n:
+                        target_int = (400, 300)
+                        break
+                    elif "MERGE" in n or "I4" in n:
+                        target_int = (770, 455)
+                        break
 
                 # Trimitem coordonatele corecte către AI
                 agent.decide_action(target_int[0], target_int[1])

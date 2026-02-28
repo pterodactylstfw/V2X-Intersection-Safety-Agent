@@ -15,6 +15,7 @@ load_dotenv()
 
 SECRET_KEY = "HACKATHON_AUTO_SECURE_2026"
 
+
 def sign_data(data):
     """Generează o amprentă digitală unică pentru pachetul de date."""
     # Scoatem semnătura veche dacă există, pentru a nu o hașura de două ori
@@ -22,7 +23,7 @@ def sign_data(data):
     # Transformăm dicționarul în string și lipim parola secretă
     payload = json.dumps(clean_data, sort_keys=True) + SECRET_KEY
     # Trecem totul prin algoritmul SHA-256
-    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 class VehicleAgent:
@@ -48,7 +49,7 @@ class VehicleAgent:
         self.decision_cooldown = 1.0
         self.waiting_for_ai = False
         self.visual_angle = 0.0
-        self.target_int = (0, 0) # Salvăm intersecția țintă pentru V2X
+        self.target_int = (0, 0)  # Salvăm intersecția țintă pentru V2X
 
         # --- NOU: 1. GENERAREA RUTEI (Dijkstra) ---
         self.graph = nx.DiGraph()
@@ -124,10 +125,15 @@ class VehicleAgent:
         if not sender_id or sender_id == self.agent_id:
             return
 
+        # NOU: Excepție pentru animale (ele sunt văzute vizual de senzori, nu au semnătură V2X)
+        if message.get("vehicle_type") == "Animal":
+            self.memory[sender_id] = message
+            return
+
         # ==========================================
         # SCUT DE SECURITATE V2X (3 Niveluri)
         # ==========================================
-        
+
         # NIVEL 1: Sanity Checks (Prevenim crash-uri de la date corupte)
         try:
             x = float(message.get("position_x", 0))
@@ -139,17 +145,21 @@ class VehicleAgent:
 
         # NIVEL 2: Heartbeat & Anti-Ghosting (Prevenim mașinile blocate)
         # Dacă mesajul e mai vechi de 2 secunde, înseamnă că mașina a pierdut conexiunea.
-        msg_time = message.get("timestamp", time.time()) # Folosim timpul curent ca fallback pentru JSON-urile vechi
+        msg_time = message.get(
+            "timestamp", time.time()
+        )  # Folosim timpul curent ca fallback pentru JSON-urile vechi
         if time.time() - msg_time > 2.0:
-            return # Ignorăm mașina fantomă
+            return  # Ignorăm mașina fantomă
 
         # NIVEL 3: Autenticitate (Prevenim Hackerii / Spoofing-ul)
         received_sig = message.get("signature", "")
         expected_sig = sign_data(message)
-        
+
         if received_sig != expected_sig:
-            print(f"[{self.agent_id}] 🚨 ATAC CIBERNETIC DETECTAT! Semnătură falsă de la {sender_id}!")
-            return # Respingem imediat pachetul fals!
+            print(
+                f"[{self.agent_id}] 🚨 ATAC CIBERNETIC DETECTAT! Semnătură falsă de la {sender_id}!"
+            )
+            return  # Respingem imediat pachetul fals!
 
         # Dacă a trecut de toate cele 3 filtre, abia acum îl salvăm în memorie!
         self.memory[sender_id] = message
@@ -163,26 +173,72 @@ class VehicleAgent:
         return dist / self.speed
 
     def decide_action(self, int_x, int_y):
-        self.target_int = (int_x, int_y) # O salvăm ca să o dăm mai departe în V2X
+        self.target_int = (int_x, int_y)  # O salvăm ca să o dăm mai departe în V2X
 
         # ==========================================
-        # 0. ACC (Evitare Coliziuni Frontale) 
+        # 0. URGENȚĂ ABSOLUTĂ: Evitare Animale (TREBUIE SĂ FIE PRIMA!)
         # ==========================================
         for other_id, other_data in list(self.memory.items()):
-            if other_data.get("vehicle_type") == "Infrastructure": continue
+            if other_data.get("vehicle_type") == "Animal":
+                ax = other_data.get("position_x", 0)
+                ay = other_data.get("position_y", 0)
+
+                dist_to_animal = math.sqrt(
+                    (ax - self.position_x) ** 2 + (ay - self.position_y) ** 2
+                )
+
+                # O vede de la 250px distanță (are timp să frâneze)
+                if dist_to_animal < 250.0:
+                    if self.heading == "EAST" and ax > self.position_x:
+                        self._brake("ANIMAL PE DRUM!")
+                        return
+                    elif self.heading == "WEST" and ax < self.position_x:
+                        self._brake("ANIMAL PE DRUM!")
+                        return
+
+        # ==========================================
+        # 0.5 ACC (Evitare Coliziuni Frontale)
+        # ==========================================
+        for other_id, other_data in list(self.memory.items()):
+            if other_data.get("vehicle_type") == "Infrastructure":
+                continue
 
             oh = other_data.get("heading", "")
             if oh == self.heading:
-                ox, oy = other_data.get("position_x", 0), other_data.get("position_y", 0)
+                ox, oy = other_data.get("position_x", 0), other_data.get(
+                    "position_y", 0
+                )
 
                 is_in_front = False
-                if self.heading == "EAST" and ox > self.position_x and abs(oy - self.position_y) < 20: is_in_front = True
-                elif self.heading == "WEST" and ox < self.position_x and abs(oy - self.position_y) < 20: is_in_front = True
-                elif self.heading == "SOUTH" and oy > self.position_y and abs(ox - self.position_x) < 20: is_in_front = True
-                elif self.heading == "NORTH" and oy < self.position_y and abs(ox - self.position_x) < 20: is_in_front = True
+                if (
+                    self.heading == "EAST"
+                    and ox > self.position_x
+                    and abs(oy - self.position_y) < 20
+                ):
+                    is_in_front = True
+                elif (
+                    self.heading == "WEST"
+                    and ox < self.position_x
+                    and abs(oy - self.position_y) < 20
+                ):
+                    is_in_front = True
+                elif (
+                    self.heading == "SOUTH"
+                    and oy > self.position_y
+                    and abs(ox - self.position_x) < 20
+                ):
+                    is_in_front = True
+                elif (
+                    self.heading == "NORTH"
+                    and oy < self.position_y
+                    and abs(ox - self.position_x) < 20
+                ):
+                    is_in_front = True
 
                 if is_in_front:
-                    dist_to_front = math.sqrt((ox - self.position_x) ** 2 + (oy - self.position_y) ** 2)
+                    dist_to_front = math.sqrt(
+                        (ox - self.position_x) ** 2 + (oy - self.position_y) ** 2
+                    )
                     if dist_to_front < 90.0:
                         self._brake(f"ACC: Frânez pt {other_id}")
                         return
@@ -191,17 +247,23 @@ class VehicleAgent:
         # 1. VERIFICARE: Am trecut de intersecție?
         # ==========================================
         is_past = False
-        if self.heading == "EAST" and self.position_x > int_x + 50: is_past = True
-        if self.heading == "WEST" and self.position_x < int_x - 50: is_past = True
-        if self.heading == "SOUTH" and self.position_y > int_y + 50: is_past = True
-        if self.heading == "NORTH" and self.position_y < int_y - 50: is_past = True
+        if self.heading == "EAST" and self.position_x > int_x + 50:
+            is_past = True
+        if self.heading == "WEST" and self.position_x < int_x - 50:
+            is_past = True
+        if self.heading == "SOUTH" and self.position_y > int_y + 50:
+            is_past = True
+        if self.heading == "NORTH" and self.position_y < int_y - 50:
+            is_past = True
 
         if is_past:
             self._recover_speed()
             self.last_ai_decision = None
             return
 
-        dist_to_int = math.sqrt((int_x - self.position_x) ** 2 + (int_y - self.position_y) ** 2)
+        dist_to_int = math.sqrt(
+            (int_x - self.position_x) ** 2 + (int_y - self.position_y) ** 2
+        )
         in_intersection = dist_to_int <= 60.0
 
         # ==========================================
@@ -210,27 +272,39 @@ class VehicleAgent:
         if self.vehicle_type != "Ambulance":
             for other_id, other_data in list(self.memory.items()):
                 if other_data.get("vehicle_type") == "Ambulance":
-                    
+
                     # FILTRU V2X PERFECT: Se duce Ambulanța spre aceeași intersecție ca mine?
                     amb_int = other_data.get("target_int", (0, 0))
-                    if math.sqrt((int_x - amb_int[0])**2 + (int_y - amb_int[1])**2) > 50.0: 
-                        continue # E pe altă stradă, o ignor!
+                    if (
+                        math.sqrt((int_x - amb_int[0]) ** 2 + (int_y - amb_int[1]) ** 2)
+                        > 50.0
+                    ):
+                        continue  # E pe altă stradă, o ignor!
 
-                    ox, oy = other_data.get("position_x", 0), other_data.get("position_y", 0)
-                    oh, o_speed = other_data.get("heading", ""), other_data.get("speed", 0)
+                    ox, oy = other_data.get("position_x", 0), other_data.get(
+                        "position_y", 0
+                    )
+                    oh, o_speed = other_data.get("heading", ""), other_data.get(
+                        "speed", 0
+                    )
                     o_dist_to_int = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
 
                     amb_past = False
-                    if oh == "SOUTH" and oy > int_y + 40: amb_past = True
-                    if oh == "NORTH" and oy < int_y - 40: amb_past = True
-                    if oh == "EAST" and ox > int_x + 40: amb_past = True
-                    if oh == "WEST" and ox < int_x - 40: amb_past = True
+                    if oh == "SOUTH" and oy > int_y + 40:
+                        amb_past = True
+                    if oh == "NORTH" and oy < int_y - 40:
+                        amb_past = True
+                    if oh == "EAST" and ox > int_x + 40:
+                        amb_past = True
+                    if oh == "WEST" and ox < int_x - 40:
+                        amb_past = True
 
                     my_ttc = dist_to_int / max(self.speed, 1.0)
                     amb_ttc = o_dist_to_int / max(o_speed, 1.0)
 
                     if not amb_past and o_dist_to_int < 400.0:
-                        if my_ttc < amb_ttc - 2.0: continue 
+                        if my_ttc < amb_ttc - 2.0:
+                            continue
                         if dist_to_int < 150.0:
                             self._brake("Cedez trecerea Ambulanței!")
                             return
@@ -256,8 +330,10 @@ class VehicleAgent:
 
         if is_light_here and not in_intersection:
             culoare_axa_mea = "GREEN"
-            if self.heading in ["NORTH", "SOUTH"]: culoare_axa_mea = semafor_data.get("state_NS", "GREEN")
-            elif self.heading in ["EAST", "WEST"]: culoare_axa_mea = semafor_data.get("state_EW", "GREEN")
+            if self.heading in ["NORTH", "SOUTH"]:
+                culoare_axa_mea = semafor_data.get("state_NS", "GREEN")
+            elif self.heading in ["EAST", "WEST"]:
+                culoare_axa_mea = semafor_data.get("state_EW", "GREEN")
 
             time_to_change = semafor_data.get("time_to_change", 5.0)
 
@@ -268,7 +344,9 @@ class VehicleAgent:
                 elif dist_to_int < 400.0:
                     cadre_ramase = time_to_change * 20
                     if cadre_ramase > 0:
-                        viteza_optima = min(self.desired_speed, max(1.0, dist_to_int / cadre_ramase))
+                        viteza_optima = min(
+                            self.desired_speed, max(1.0, dist_to_int / cadre_ramase)
+                        )
                         if self.speed > viteza_optima:
                             self.speed = max(viteza_optima, self.speed - 0.2)
                             return
@@ -295,15 +373,21 @@ class VehicleAgent:
         if abs(int_x - 770) < 20 and abs(int_y - 455) < 20:
             conflict_merge = False
             for other_id, other_data in list(self.memory.items()):
-                if other_data.get("vehicle_type") == "Infrastructure": continue
-                
-                other_int = other_data.get("target_int", (0, 0))
-                if math.sqrt((int_x - other_int[0])**2 + (int_y - other_int[1])**2) > 50.0: 
+                if other_data.get("vehicle_type") == "Infrastructure":
                     continue
 
-                ox, oy = other_data.get("position_x", 0), other_data.get("position_y", 0)
+                other_int = other_data.get("target_int", (0, 0))
+                if (
+                    math.sqrt((int_x - other_int[0]) ** 2 + (int_y - other_int[1]) ** 2)
+                    > 50.0
+                ):
+                    continue
+
+                ox, oy = other_data.get("position_x", 0), other_data.get(
+                    "position_y", 0
+                )
                 o_dist = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
-                
+
                 if dist_to_int < 300.0 and o_dist < 300.0:
                     conflict_merge = True
                     if dist_to_int > o_dist + 15.0:
@@ -312,10 +396,11 @@ class VehicleAgent:
                     elif abs(dist_to_int - o_dist) <= 15.0 and self.agent_id > other_id:
                         self._brake("Zipper: Tie-breaker YIELD")
                         return
-                    
+
                     self.turn_intent = "PRIORITY"
-            
-            if not conflict_merge: self._recover_speed()
+
+            if not conflict_merge:
+                self._recover_speed()
             return
 
         # ==========================================
@@ -328,24 +413,34 @@ class VehicleAgent:
         conflict_detected = False
 
         for other_id, other_data in list(self.memory.items()):
-            if other_data.get("vehicle_type") == "Infrastructure": continue
-            if other_data.get("heading") == self.heading: continue
-            
+            if other_data.get("vehicle_type") == "Infrastructure":
+                continue
+            if other_data.get("heading") == self.heading:
+                continue
+
             # FILTRU V2X PERFECT
             other_int = other_data.get("target_int", (0, 0))
-            if math.sqrt((int_x - other_int[0])**2 + (int_y - other_int[1])**2) > 50.0: 
-                continue 
+            if (
+                math.sqrt((int_x - other_int[0]) ** 2 + (int_y - other_int[1]) ** 2)
+                > 50.0
+            ):
+                continue
 
             ox, oy = other_data.get("position_x", 0), other_data.get("position_y", 0)
             oh = other_data.get("heading", "")
 
             other_past = False
-            if oh == "SOUTH" and oy > int_y + 40: other_past = True
-            if oh == "NORTH" and oy < int_y - 40: other_past = True
-            if oh == "EAST" and ox > int_x + 40: other_past = True
-            if oh == "WEST" and ox < int_x - 40: other_past = True
+            if oh == "SOUTH" and oy > int_y + 40:
+                other_past = True
+            if oh == "NORTH" and oy < int_y - 40:
+                other_past = True
+            if oh == "EAST" and ox > int_x + 40:
+                other_past = True
+            if oh == "WEST" and ox < int_x - 40:
+                other_past = True
 
-            if other_past: continue
+            if other_past:
+                continue
 
             o_dist = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
 
@@ -359,7 +454,12 @@ class VehicleAgent:
                 if abs(my_ttc - o_ttc) < 3.5 or o_dist < 80.0:
                     conflict_detected = True
 
-                    yields_to = {"EAST": "NORTH", "NORTH": "WEST", "WEST": "SOUTH", "SOUTH": "EAST"}
+                    yields_to = {
+                        "EAST": "NORTH",
+                        "NORTH": "WEST",
+                        "WEST": "SOUTH",
+                        "SOUTH": "EAST",
+                    }
 
                     if yields_to.get(self.heading) == oh:
                         if dist_to_int > 90.0:
@@ -367,7 +467,9 @@ class VehicleAgent:
                             self.current_state = "BRAKING"
                             return
                         elif 50.0 <= dist_to_int <= 90.0:
-                            self._brake(f"Cedez trecerea (Regula Dreapta pt {other_id})")
+                            self._brake(
+                                f"Cedez trecerea (Regula Dreapta pt {other_id})"
+                            )
                             return
                     elif yields_to.get(oh) == self.heading:
                         self.turn_intent = "PRIORITY"
@@ -437,7 +539,13 @@ class VehicleAgent:
     # FUNCȚIILE NOI DE MIȘCARE PE GRAF
     # ==========================================
     def update_position(self, dt):
-        if self.speed <= 0 or self.current_node_index >= len(self.route) - 1:
+        if self.speed <= 0:
+            return
+
+        if self.current_node_index >= len(self.route) - 1:
+            angle_rad = math.radians(self.visual_angle)
+            self.position_x += self.speed * dt * math.cos(angle_rad)
+            self.position_y += self.speed * dt * math.sin(angle_rad)
             return
 
         # 1. Luăm coordonatele URMĂTORULUI nod țintă
@@ -453,15 +561,7 @@ class VehicleAgent:
             if self.current_node_index >= len(self.route) - 1:
                 return
 
-            # Recalculăm intenția de viraj (pentru semnalizări)
-            self._update_heading_and_turn()
-
-            # Actualizăm ținta către nodul următor
-            next_node_name = self.route[self.current_node_index + 1]
-            tx, ty = nodes[next_node_name]
-
         # 4. CALCULĂM UNGHIUL EXACT DE DEPLASARE (Rotația Continuă)
-        # math.atan2 returnează unghiul în radiani (-pi la pi)
         angle_rad = math.atan2(ty - self.position_y, tx - self.position_x)
 
         # Convertim în grade (necesar pentru Pygame)
@@ -517,15 +617,19 @@ class VehicleAgent:
             "speed": self.speed,
             "vehicle_type": self.vehicle_type,
             "visual_angle": self.visual_angle,
-            "intent": (self.current_state if self.current_state != "CRUISE" else self.turn_intent),
+            "intent": (
+                self.current_state
+                if self.current_state != "CRUISE"
+                else self.turn_intent
+            ),
             "heading": self.heading,
             "timestamp": time.time(),
-            
             # NOU: Transmitem direct coordonatele intersecției spre care mergem! E infailibil.
-            "target_int": self.target_int 
+            "target_int": self.target_int,
         }
-        
+
         payload["signature"] = sign_data(payload)
         return payload
+
     def has_decided_to_brake(self):
         return self.current_state == "BRAKING"
