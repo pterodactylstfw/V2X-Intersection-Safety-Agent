@@ -78,15 +78,25 @@ class VehicleAgent:
         self._update_heading_and_turn()
 
         self.llm = ChatGroq(temperature=0, model_name="llama-3.1-8b-instant")
+        # --- PROMPT AI ÎMBUNĂTĂȚIT (Prioritate de Dreapta) ---
         self.prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    "Ești un agent de trafic AI. Răspunde DOAR: FRANEAZA sau TRECE.",
+                    "Ești creierul autonom al unei mașini. Rolul tău este să eviți accidentele aplicând Prioritatea de Dreapta.\n"
+                    "Reguli de orientare (tu decizi strict pentru tine):\n"
+                    "- Dacă tu mergi spre NORTH și celălalt merge spre WEST, el vine din dreapta ta -> FRANEAZA.\n"
+                    "- Dacă tu mergi spre SOUTH și celălalt merge spre EAST, el vine din dreapta ta -> FRANEAZA.\n"
+                    "- Dacă tu mergi spre EAST și celălalt merge spre NORTH, el vine din dreapta ta -> FRANEAZA.\n"
+                    "- Dacă tu mergi spre WEST și celălalt merge spre SOUTH, el vine din dreapta ta -> FRANEAZA.\n"
+                    "În caz contrar, dacă el nu vine din dreapta ta, tu ai prioritate -> TRECE.\n"
+                    "Ambulanțele au prioritate absolută indiferent de direcție.\n\n"
+                    "Răspunde DOAR cu un singur cuvânt: FRANEAZA sau TRECE.",
                 ),
                 (
                     "human",
-                    "Eu sunt {my_id} ({my_type}). Celălalt e {other_id} ({other_type}). Cine trece?",
+                    "Eu sunt {my_id} (Tip: {my_type}) și merg spre {my_heading}. "
+                    "Celălalt este {other_id} (Tip: {other_type}) și merge spre {other_heading}. Ce decizie iei pentru MINE?",
                 ),
             ]
         )
@@ -237,8 +247,11 @@ class VehicleAgent:
                     oy = other_data.get("position_y", 0)
                     oh = other_data.get("heading", "")
                     o_speed = other_data.get("speed", 0)
+
+                    # Calculăm distanța ambulanței față de intersecția MEA țintă
                     o_dist_to_int = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
 
+                    # Verificăm dacă ambulanța a trecut DEJA de intersecție
                     amb_past = False
                     if oh == "SOUTH" and oy > int_y + 40:
                         amb_past = True
@@ -249,22 +262,25 @@ class VehicleAgent:
                     if oh == "WEST" and ox < int_x - 40:
                         amb_past = True
 
-                    if not amb_past and o_speed > 1.0 and o_dist_to_int < 350.0:
-                        if 60.0 < dist_to_int < 120.0:
+                    # Dacă ambulanța se apropie de aceeași intersecție ca mine (e la sub 400px)
+                    if not amb_past and o_dist_to_int < 400.0:
+                        # Dacă eu sunt destul de aproape de intersecție (sub 150px)
+                        # FRÂNEZ PÂNĂ LA 0, chiar dacă sunt fix pe linia de stop!
+                        if dist_to_int < 150.0:
                             self._brake("Cedez trecerea Ambulanței!")
                             return
-                        elif dist_to_int >= 120.0:
-                            self.speed = max(1.5, self.speed - 0.2)
+                        # Dacă sunt mai departe, doar încetinesc preventiv
+                        else:
+                            self.speed = max(1.0, self.speed - 0.2)
                             return
 
         # ==========================================
         # 4. NEGOCIERE V2V / AI (Pentru intersecții nesemaforizate sau avarie)
         # ==========================================
-        if dist_to_int > 250.0:
+        if dist_to_int > 350.0:
             self._recover_speed()
             return
 
-        my_ttc = self.calculate_ttc(int_x, int_y)
         conflict_detected = False
 
         for other_id, other_data in list(self.memory.items()):
@@ -276,6 +292,7 @@ class VehicleAgent:
             ox, oy = other_data["position_x"], other_data["position_y"]
             oh = other_data.get("heading", "")
 
+            # Verificăm dacă celălalt a trecut deja de centrul intersecției
             other_past = False
             if oh == "SOUTH" and oy > int_y + 40:
                 other_past = True
@@ -289,12 +306,13 @@ class VehicleAgent:
             if other_past:
                 continue
 
-            o_speed = other_data["speed"]
             o_dist = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
-            o_ttc = o_dist / o_speed if o_speed > 2.0 else 999
 
-            if abs(my_ttc - o_ttc) < 4.5:
+            # FIXUL: Folosim DISTANȚĂ pură. Cât timp suntem amândoi în raza de 350px,
+            # nu mai anulăm conflictul, forțând AI-ul să ia o decizie stabilă!
+            if o_dist < 350.0:
                 conflict_detected = True
+
                 if self.vehicle_type == "Ambulance":
                     self._recover_speed()
                     return
@@ -320,6 +338,9 @@ class VehicleAgent:
 
     def _negotiate_ai(self, other_id, other_data):
         if self.waiting_for_ai:
+            # FIX: Cât timp AI-ul se gândește în fundal (aprox 1 secundă),
+            # mașina ia piciorul de pe accelerație și pune frână preventiv (Conducere Defensivă)
+            self.speed = max(0, self.speed - 2.0)
             return
 
         current_time = time.time()
@@ -327,7 +348,8 @@ class VehicleAgent:
             current_time - self.last_ai_call_time < self.decision_cooldown
         ):
             if "FRANEAZA" in self.last_ai_decision:
-                self._brake("AI Decision")
+                # Frânăm decisiv pentru a lăsa mașina din dreapta să treacă
+                self.speed = max(0, self.speed - 5.0)
             else:
                 self._recover_speed()
             return
@@ -340,13 +362,19 @@ class VehicleAgent:
                     {
                         "my_id": self.agent_id,
                         "my_type": self.vehicle_type,
+                        "my_heading": self.heading,
                         "other_id": other_id,
-                        "other_type": other_data.get("vehicle_type"),
+                        "other_type": other_data.get("vehicle_type", "Normal"),
+                        "other_heading": other_data.get("heading", "UNKNOWN"),
                     }
                 )
                 self.last_ai_decision = res.content.upper()
+                print(
+                    f"[AI Prioritate] {self.agent_id}({self.heading}) a vazut {other_id}({other_data.get('heading')}) -> A decis: {self.last_ai_decision}"
+                )
                 self.last_ai_call_time = time.time()
-            except:
+            except Exception as e:
+                print(f"[AI EROARE] {self.agent_id} -> Frână de urgență!")
                 self.last_ai_decision = "FRANEAZA"
             finally:
                 self.waiting_for_ai = False
