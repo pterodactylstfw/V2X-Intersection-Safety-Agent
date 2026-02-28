@@ -115,6 +115,44 @@ class SimulationUI:
             current_x += unit_dx * (dash_length + gap_length)
             current_y += unit_dy * (dash_length + gap_length)
 
+    def draw_building_along_road(self, p1, p2, width=60, offset=80, node_offset=50):
+        """
+        Clădire paralelă cu drumul, cu:
+        - offset lateral față de drum
+        - offset față de noduri (capete)
+        """
+        x1, y1 = p1
+        x2, y2 = p2
+
+        dx = x2 - x1
+        dy = y2 - y1
+        length = math.hypot(dx, dy)
+        if length < 2 * node_offset:
+            return
+
+        ux = dx / length
+        uy = dy / length
+
+        # mutăm punctele mai în interior (offset față de noduri)
+        x1 += ux * node_offset
+        y1 += uy * node_offset
+        x2 -= ux * node_offset
+        y2 -= uy * node_offset
+
+        # vector perpendicular
+        px = -uy
+        py = ux
+
+        ox = px * offset
+        oy = py * offset
+
+        pA = (x1 + ox, y1 + oy)
+        pB = (x2 + ox, y2 + oy)
+        pC = (x2 + ox + px * width, y2 + oy + py * width)
+        pD = (x1 + ox + px * width, y1 + oy + py * width)
+
+        pygame.draw.polygon(self.screen, COLOR_WALL, [pA, pB, pC, pD])
+
     def draw_environment(self):
         """Desenează harta clasică, curată, exact ca într-o schiță."""
         self.screen.fill(COLOR_BACKGROUND)
@@ -131,7 +169,17 @@ class SimulationUI:
                 pygame.draw.line(self.screen, COLOR_ROAD, p1, p2, ROAD_WIDTH_SECONDARY)
 
         # DESENARE CLĂDIRI (Ajustate ca să nu cadă pe drumurile diagonale)
-        pygame.draw.polygon(self.screen, COLOR_WALL, [(50, 170), (250, 270), (220, 310), (20, 210)], width=0)
+        self.draw_building_along_road(nodes["W_START"], nodes["I1_SW"], width=50, offset=40, node_offset=100)
+        self.draw_building_along_road(nodes["MERGE_UP"], nodes["I3_NE"], width=50, offset=40, node_offset=50)
+        self.draw_building_along_road(nodes["MERGE_UP"], nodes["NE_ONEWAY_START"], width=50, offset=40, node_offset=110)
+        self.draw_building_along_road(nodes["NW_START"], nodes["I3_NW"], width=50, offset=40, node_offset=100)
+        self.draw_building_along_road(nodes["I3_SW"], nodes["I1_NW"], width=50, offset=40, node_offset=100)
+        self.draw_building_along_road(nodes["W_END"], nodes["I1_NW"], width=50, offset=-90, node_offset=60)
+        self.draw_building_along_road(nodes["I1_SE"], nodes["I2_SW"], width=50, offset=40, node_offset=100)
+        self.draw_building_along_road(nodes["I1_NE"], nodes["I3_SE"], width=50, offset=40, node_offset=100)
+        self.draw_building_along_road(nodes["I3_SE"], nodes["I2_NW"], width=40, offset=40, node_offset=250)
+
+
         # pygame.draw.polygon(self.screen, COLOR_WALL, [(270, 350), (270, 370), (370, 370), (370, 350)], width=0)
 
 
