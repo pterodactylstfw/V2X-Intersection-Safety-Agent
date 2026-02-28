@@ -1,4 +1,6 @@
 import threading
+import time
+import json
 
 class V2XBroker:
     def __init__(self):
@@ -45,3 +47,50 @@ class V2XBroker:
                     surrounding_traffic[v_id] = data
                     
             return surrounding_traffic
+
+
+class DataFeeder:
+    def __init__(self, broker: V2XBroker, file_path: str):
+        """
+        Alimentatorul are nevoie de 2 lucruri:
+        1. broker-ul in care sa publice datele
+        2. calea catre fisierul .json cu scenariul
+        """
+        self.broker = broker
+        self.file_path = file_path
+        self.scenario_data = []
+
+    def load_scenario(self):
+        """Citeste fisierul JSON de pe hard disk si il incarca in memorie."""
+        try:
+            with open(self.file_path, 'r') as file:
+                self.scenario_data = json.load(file)
+            print(f"[Feeder] Scenariu incarcat cu succes! Contine {len(self.scenario_data)} cadre.")
+        except FileNotFoundError:
+            print(f"[Eroare] Fisierul {self.file_path} nu a fost gasit!")
+
+    def play_scenario(self, delay_seconds: float = 0.5):
+        """
+        Parcurge scenariul cadru cu cadru si publica datele in V2XBroker.
+        Pune pauza (delay_seconds) intre cadre pentru a simula trecerea timpului.
+        """
+        print("[Feeder] Incepem redarea scenariului...")
+        
+        # Iterăm prin fiecare cadru (frame) din filmul nostru
+        for numar_cadru, vehicule_in_cadru in enumerate(self.scenario_data):
+            
+            # Pentru fiecare masina din acel cadru, ii publicam starea in broker
+            for stare_vehicul in vehicule_in_cadru:
+                id_masina = stare_vehicul["agent_id"]
+                
+                # Aici folosim functia scrisa de tine anterior!
+                self.broker.publish(id_masina, stare_vehicul)
+            
+            # Printam in consola sa vedem ca functioneaza (optional)
+            print(f" -> Cadrul {numar_cadru} a fost publicat.")
+            
+            # MAGIA: Punem programul pe pauza. Asta permite UI-ului sa redeseneze 
+            # ecranul si AI-ului sa citeasca noile date si sa gandeasca.
+            time.sleep(delay_seconds)
+            
+        print("[Feeder] Scenariul s-a terminat!")
