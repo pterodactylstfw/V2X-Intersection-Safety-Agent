@@ -25,6 +25,7 @@ COLOR_GREEN = (0, 255, 0)
 COLOR_YELLOW = (255, 165, 0)
 COLOR_OFF = (40, 40, 40)
 
+
 class SimulationUI:
     def __init__(self, title="V2X Multi-Lane Simulator"):
         pygame.init()
@@ -142,12 +143,19 @@ class SimulationUI:
     def draw_traffic_light_agent(self, current_traffic):
         """Desenează semafoare cu 3 becuri în afara drumului (dreapta șoferului)."""
         cx, cy = 400, 400
-        stop_dist = 80 # Distanța față de centrul intersecției
-        offset = 65    # Distanța față de axul drumului (îl scoate pe trotuar)
+        stop_dist = 80  # Distanța față de centrul intersecției
+        offset = 65  # Distanța față de axul drumului (îl scoate pe trotuar)
 
         # Date de la Broker
-        sem_data = next((v for v in current_traffic.values() if v.get("agent_id") == "Semafor_Centru"), {})
-        
+        sem_data = next(
+            (
+                v
+                for v in current_traffic.values()
+                if v.get("agent_id") == "Semafor_Centru"
+            ),
+            {},
+        )
+
         # Stări
         state_ns = sem_data.get("state_NS", "RED")
         state_ew = sem_data.get("state_EW", "RED")
@@ -155,13 +163,17 @@ class SimulationUI:
         def draw_pole(x, y, state, orientation="V"):
             # Desenăm cutia neagră a semaforului
             box_w, box_h = (20, 60) if orientation == "V" else (60, 20)
-            pygame.draw.rect(self.screen, (30, 30, 30), (x - box_w//2, y - box_h//2, box_w, box_h))
-            
+            pygame.draw.rect(
+                self.screen,
+                (30, 30, 30),
+                (x - box_w // 2, y - box_h // 2, box_w, box_h),
+            )
+
             # Logica de culori (Stins vs Aprins)
             r_col = COLOR_RED if state == "RED" and self.system_on else (60, 0, 0)
             y_col = (60, 60, 0)
             g_col = COLOR_GREEN if state == "GREEN" and self.system_on else (0, 60, 0)
-            
+
             # Galben intermitent dacă sistemul e OFF
             if not self.system_on:
                 if (pygame.time.get_ticks() // 500) % 2 == 0:
@@ -178,23 +190,23 @@ class SimulationUI:
                 pygame.draw.circle(self.screen, g_col, (x + 18, y), 7)
 
         # --- AMPLASARE (Folosim INTERSECTION_CENTER_Y care este definit global la tine) ---
-        
+
         # 1. NORD (Banda 380): Semaforul în stânga intersecției, deasupra drumului
         draw_pole(INT_1_X - offset, INTERSECTION_CENTER_Y - stop_dist, state_ns, "V")
-        
+
         # 2. SUD (Banda 420): Semaforul în dreapta intersecției, sub drum
         draw_pole(INT_1_X + offset, INTERSECTION_CENTER_Y + stop_dist, state_ns, "V")
-        
+
         # 3. VEST (Banda 420): Semaforul sub drum, în stânga intersecției
         draw_pole(INT_1_X - stop_dist, INTERSECTION_CENTER_Y + offset, state_ew, "H")
-        
+
         # 4. EST (Banda 380): Semaforul deasupra drumului, în dreapta intersecției
         draw_pole(INT_1_X + stop_dist, INTERSECTION_CENTER_Y - offset, state_ew, "H")
 
     def render_vehicle(self, v_data):
         v_id = v_data.get("agent_id", "?")
         if v_id == "Semafor_Centru" or v_data.get("vehicle_type") == "Infrastructure":
-            return 
+            return
         v_type = v_data.get("vehicle_type", "Normal")
         x, y = v_data.get("position_x", 0), v_data.get("position_y", 0)
         heading = v_data.get("heading", "EAST")
@@ -245,6 +257,8 @@ class SimulationUI:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if self.button_rect.collidepoint(event.pos):
                         self.system_on = not self.system_on
+
+                        broker.infrastructure_active = self.system_on
 
             self.draw_environment()
             self.draw_button()
