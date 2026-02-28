@@ -189,15 +189,12 @@ class SimulationUI:
         state_ns = sem_data.get("state_NS", "RED")
         state_ew = sem_data.get("state_EW", "RED")
 
-        def draw_pole(pos, state, orientation, flip):
+        def draw_pole(pos, state, orientation, dx=0, dy=0, flip=False):
             if not pos:
                 return
             x, y = pos
-            offset = 55
-            if orientation == "V":
-                x = x + offset if flip else x - offset
-            else:
-                y = y - offset if flip else y + offset
+            x += dx
+            y += dy
 
             box_w, box_h = (22, 60) if orientation == "V" else (60, 22)
             pygame.draw.rect(
@@ -220,17 +217,31 @@ class SimulationUI:
                 elif state == "RED":
                     r_c = COLOR_RED
 
-            offsets = [-18, 0, 18] if not flip else [18, 0, -18]
-            cols = [r_c, y_c, g_c]
+            # Ordinea becurilor depinde de flip (doar culorile, nu pozițiile)
+            offsets = [-18, 0, 18]
+            cols = [r_c, y_c, g_c] if not flip else [g_c, y_c, r_c]
             for i in range(3):
                 p = (x, y + offsets[i]) if orientation == "V" else (x + offsets[i], y)
                 pygame.draw.circle(self.screen, cols[i], p, 7)
 
-        # REPARAT: Folosim numele corecte din map_config.py (_STOP)
-        draw_pole(nodes.get("I1_NW"), state_ns, "V", True)  # Sus-Stânga
-        draw_pole(nodes.get("I1_SE"), state_ns, "V", False)  # Jos-Dreapta
-        draw_pole(nodes.get("I1_SW"), state_ew, "H", False)  # Jos-Stânga
-        draw_pole(nodes.get("I1_NE"), state_ew, "H", True)
+        # Mută semafoarele "în exterior" (dreapta benzii din dreapta, per colț)
+        # Ajustează valoarea asta dacă le vrei mai aproape/mai departe de bandă:
+        OFFSET_X = 40
+        OFFSET_Y = 60
+
+        # Pentru axa NS folosim corp vertical ("V")
+        # I1_NW e colț sus-stânga -> exterior = sus + stânga (flip pentru Green on top)
+        draw_pole(nodes.get("I1_NW"), state_ns, "V", dx=-OFFSET_X, dy=-OFFSET_Y, flip=True)
+
+        # I1_SE e colț jos-dreapta -> exterior = jos + dreapta
+        draw_pole(nodes.get("I1_SE"), state_ns, "V", dx=+OFFSET_X, dy=+OFFSET_Y)
+
+        # Pentru axa EW folosim corp orizontal ("H")
+        # I1_SW e colț jos-stânga -> exterior = jos + stânga (flip pentru Green on left)
+        draw_pole(nodes.get("I1_SW"), state_ew, "H", dx=-OFFSET_Y, dy=+OFFSET_X, flip=True)
+
+        # I1_NE e colț sus-dreapta -> exterior = sus + dreapta
+        draw_pole(nodes.get("I1_NE"), state_ew, "H", dx=+OFFSET_Y, dy=-OFFSET_X)
 
     def draw_button(self):
         color = (0, 180, 0) if self.system_on else (180, 0, 0)
