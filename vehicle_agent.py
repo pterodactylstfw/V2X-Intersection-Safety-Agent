@@ -74,6 +74,7 @@ class VehicleAgent:
             + (intersection_y - self.position_y) ** 2
         )
 
+        # 1. Ignorăm calculele dacă suntem departe
         if dist_to_int > 250:
             self._recover_speed()
             return
@@ -82,35 +83,47 @@ class VehicleAgent:
         conflict_detected = False
 
         for other_id, other_data in list(self.memory.items()):
-            # --- REPARAȚIE: Ignorăm mașinile care au trecut deja de centru ---
+            # --- REPARAȚIE 1: IGNORĂM SEMAFORUL ÎN CALCULUL DE COLIZIUNE ---
+            # Nu ne lovim fizic de semafor, el e infrastructură!
+            if other_data.get("vehicle_type") == "Infrastructure":
+                # Aici poți adăuga logică de semafor mai târziu (ex: dacă e RED, frânezi)
+                continue
+
+            # --- REPARAȚIE 2: IGNORĂM MAȘINILE CARE AU TRECUT ---
             ox, oy = other_data["position_x"], other_data["position_y"]
             oh = other_data.get("heading", "")
 
             past = False
-            if oh == "SOUTH" and oy > intersection_y + 50:
+            if oh == "SOUTH" and oy > intersection_y + 60:
                 past = True
-            if oh == "NORTH" and oy < intersection_y - 50:
+            if oh == "NORTH" and oy < intersection_y - 60:
                 past = True
-            if oh == "EAST" and ox > intersection_x + 50:
+            if oh == "EAST" and ox > intersection_x + 60:
                 past = True
-            if oh == "WEST" and ox < intersection_x - 50:
+            if oh == "WEST" and ox < intersection_x - 60:
                 past = True
 
             if past:
-                continue  # Această mașină a trecut, nu ne mai temem de ea
-            # -------------------------------------------------------------
+                continue
 
+            # --- CALCUL COLIZIUNE ---
             other_speed = other_data["speed"]
-            other_dist = math.sqrt(
-                (intersection_x - ox) ** 2 + (intersection_y - oy) ** 2
-            )
-            other_ttc = other_dist / other_speed if other_speed > 5.0 else 999
+            # Prevenim erori dacă viteza e aproape 0
+            if other_speed < 1.0:
+                other_ttc = 999
+            else:
+                other_dist = math.sqrt(
+                    (intersection_x - ox) ** 2 + (intersection_y - oy) ** 2
+                )
+                other_ttc = other_dist / other_speed
 
-            if abs(my_ttc - other_ttc) < 6.0:
+            # Dacă riscăm să ajungem în același timp (fereastră de 5 secunde)
+            if abs(my_ttc - other_ttc) < 5.0:
                 conflict_detected = True
                 self._negotiate_ai(other_id, other_data)
                 return
 
+        # Dacă am ajuns aici, nu e niciun conflict activ
         if not conflict_detected:
             self._recover_speed()
 
