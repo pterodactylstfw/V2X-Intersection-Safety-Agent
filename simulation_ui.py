@@ -50,14 +50,18 @@ class SimulationUI:
         pygame.draw.rect(self.screen, COLOR_WALL, wall_rect_2)
 
     def render_vehicle(self, v_data):
-        """Afișează mașina conform datelor din frame-ul curent."""
-        x = v_data["position_x"]
-        y = v_data["position_y"]
-        v_type = v_data["vehicle_type"]
-        heading = v_data["heading"]
-        v_id = v_data["agent_id"]
-        intent = v_data["intent"]
+        """Afișează mașina conform datelor primite (cu protecție la chei lipsă)."""
+        x = v_data.get("position_x", 0)
+        y = v_data.get("position_y", 0)
+        v_type = v_data.get("vehicle_type", "Normal")
+        
+        # Dacă 'heading' lipsește, presupunem că merge spre NORD (nu mai dă eroare)
+        heading = v_data.get("heading", "NORTH") 
+        
+        v_id = v_data.get("agent_id", "Unknown")
+        intent = v_data.get("intent", "IDLE")
         priority = v_data.get("priority_active", False)
+        # ... restul funcției rămâne la fel ...
 
         # 1. Culoarea mașinii: Ambulanță (204,0,0) vs Normală (153,153,255)
         color = COLOR_AMBULANCE_CAR if v_type == "Ambulance" else COLOR_NORMAL_CAR
@@ -86,53 +90,31 @@ class SimulationUI:
         self.screen.blit(id_surf, (x - 20, y - height//2 - 20))
         self.screen.blit(intent_surf, (x - 20, y - height//2 - 35))
 
-    def start(self, scenario_file):
-        """Încarcă JSON-ul și rulează animația frame cu frame."""
-        try:
-            with open(scenario_file, 'r') as f:
-                scenario_data = json.load(f)
-        except Exception as e:
-            print(f"Eroare la încărcarea JSON: {e}")
-            return
-
-        frame_idx = 0
-        total_frames = len(scenario_data)
+    def start(self, broker): # Primim broker-ul, NU fisierul JSON
+        """Citește datele LIVE din brokerul V2X și le desenează."""
         running = True
-
-        print(f"Simularea a început. Total frame-uri: {total_frames}")
+        print("Simularea UI a început. Ascultăm rețeaua V2X...")
 
         while running:
-            # Verificare evenimente (IMPORTANT: Previne blocarea ferestrei)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    running = False
 
-            # Desenăm fundalul și drumurile
             self.draw_environment()
 
-            # Dacă mai avem date în scenariu, le afișăm
-            if frame_idx < total_frames:
-                current_frame = scenario_data[frame_idx]
-                
-                # Parcurgem toate mașinile din lista curentă (frame-ul actual)
-                for vehicle in current_frame:
-                    self.render_vehicle(vehicle)
-                
-                frame_idx += 1 # Trecem la următoarea stare în timp
-            else:
-                # Am ajuns la finalul scenariului
-                # frame_idx = 0 # (Opțional: decomentează dacă vrei să se repete la infinit)
-                pass
+            # --- PARTEA CRITICĂ: Citim starea actuală a tuturor mașinilor din rețea ---
+            # Folosim un 'receive' special sau accesăm direct statusul (fiind în același proces)
+            with broker.lock:
+                current_traffic = broker.vehicles_status.copy()
 
-            # Update display
+            # Desenăm fiecare mașină care este activă în rețea în acest moment
+            for v_id, v_data in current_traffic.items():
+                self.render_vehicle(v_data)
+
             pygame.display.flip()
-            # Control viteză (FPS)
-            self.clock.tick(self.fps)
+            self.clock.tick(60) # UI-ul poate rula la 60 FPS pentru fluiditate
 
         pygame.quit()
-        sys.exit()
 
 # ===== EXECUTARE =====
 if __name__ == "__main__":

@@ -1,136 +1,40 @@
-from v2x_network import V2XBroker
+import threading
+from v2x_network import V2XBroker, DataFeeder
 from vehicle_agent import VehicleAgent
-import time
+from simulation_ui import SimulationUI
 
-
-def test_retea_v2x():
-    print("--- Start Test V2X Broker ---\n")
-
-    # 1. Inițializăm brokerul tău (Pornim "avizierul" central)
+def run_simulation():
+    # 1. Infrastructura
     broker = V2XBroker()
+    ui = SimulationUI()
+    
+    # 2. Agenții
+    # În main.py, la crearea agenților:
+    agent_a = VehicleAgent("Masina_A", 0, 400, 3.5, heading="EAST")
+    agent_b = VehicleAgent("Ambulanta_B", 400, 0, 5.0, vehicle_type="Ambulance", heading="SOUTH")
+    agenti = {"Masina_A": agent_a, "Ambulanta_B": agent_b}
 
-    # 2. Creăm datele pentru cele două mașini respectând "Contractul" stabilit
-    stare_masina_a = {
-        "pozitie_x": 10.0,
-        "pozitie_y": 20.0,
-        "viteza": 50,
-        "intentie": "MERGE_INAINTE",
-    }
+    # 3. Thread-ul pentru logică și alimentare (rulează în fundal)
+    def background_logic():
+        feeder = DataFeeder(broker, "scenariu.json", agents_dict=agenti)
+        feeder.load_scenario()
+        feeder.play_scenario(delay_seconds=0.05)
 
-    stare_masina_b = {
-        "pozitie_x": 100.0,
-        "pozitie_y": 20.0,
-        "viteza": 60,
-        "intentie": "FRANEAZA",
-    }
+    # ... în funcția run_simulation ...
+    
+    # Pornim thread-ul de LOGICĂ și FEEDER în spate (daemon=True)
+    def background_task():
+        # Pasul A: Încărcăm scenariul
+        feeder = DataFeeder(broker, "scenariu.json", agents_dict=agenti)
+        feeder.load_scenario()
+        # Pasul B: Pornim redarea (aceasta va actualiza broker-ul la fiecare 0.05s)
+        feeder.play_scenario(delay_seconds=0.05)
 
-    # 3. Mașinile își publică starea în canalul V2X
-    print("Se publica datele...")
-    broker.publish("Masina_A", stare_masina_a)
-    broker.publish("Masina_B", stare_masina_b)
-    print("Datele au fost publicate cu succes!\n")
+    logic_thread = threading.Thread(target=background_task, daemon=True)
+    logic_thread.start()
 
-    # 4. Testăm metoda de recepție (Citirea din rețea)
-    # Masina_A cere datele. Ar trebui să vadă doar Masina_B.
-    date_vazute_de_a = broker.receive("Masina_A")
-    print(f"Ce vede Masina_A în rețea?")
-    print(f"-> {date_vazute_de_a}\n")
-
-    # Masina_B cere datele. Ar trebui să vadă doar Masina_A.
-    date_vazute_de_b = broker.receive("Masina_B")
-    print(f"Ce vede Masina_B în rețea?")
-    print(f"-> {date_vazute_de_b}\n")
-
-    # 5. Simulăm o actualizare a stării (Masina A se mișcă)
-    print("Masina_A se deplasează...")
-    stare_masina_a["pozitie_x"] = 15.0  # Actualizăm poziția X
-    broker.publish("Masina_A", stare_masina_a)
-
-    date_vazute_de_b_dupa_miscare = broker.receive("Masina_B")
-    print(f"Ce vede Masina_B acum?")
-    print(f"-> {date_vazute_de_b_dupa_miscare}")
-
-
-def simulare_live():
-    print("--- Start Simulare Integrată (AI + V2X) ---\n")
-
-    # 1. Pornim rețeaua colegei tale (Broker-ul)
-    broker = V2XBroker()
-
-    # 2. Creăm agenții tăi AI
-    # Mașina 1 (Normală), merge de la stânga la dreapta spre intersecție (100, 50)
-    masina_1 = VehicleAgent(
-        vehicle_id=1, start_x=0, start_y=50, speed=10, vehicle_type="normal"
-    )
-
-    # Mașina 2 (Ambulanță), merge de sus în jos spre intersecție (100, 50)
-    masina_2 = VehicleAgent(
-        vehicle_id=2, start_x=100, start_y=150, speed=10, vehicle_type="ambulance"
-    )
-
-    # Centrul intersecției
-    intersectie_x = 100
-    intersectie_y = 50
-
-    # 3. BUCLA DE TIMP (Simulăm 10 cadre/secunde de mișcare)
-    for cadru in range(1, 11):
-        print(f"\n[ SECUNDA {cadru} ] =====================================")
-
-        # A. Mașinile își pregătesc datele și le publică în V2X
-        # Aici facem "traducerea" pentru rețeaua colegei tale
-        stare_m1 = {
-            "id": masina_1.id,
-            "x": masina_1.x,
-            "y": masina_1.y,
-            "speed": masina_1.speed,
-            "type": masina_1.type,
-        }
-        stare_m2 = {
-            "id": masina_2.id,
-            "x": masina_2.x,
-            "y": masina_2.y,
-            "speed": masina_2.speed,
-            "type": masina_2.type,
-        }
-
-        broker.publish(f"Masina_{masina_1.id}", stare_m1)
-        broker.publish(f"Masina_{masina_2.id}", stare_m2)
-
-        # B. Mașinile "ascultă" rețeaua (Percepție)
-        date_primite_de_1 = broker.receive(f"Masina_{masina_1.id}")
-        for nume, date in date_primite_de_1.items():
-            masina_1.receive_v2x_message(date)
-
-        date_primite_de_2 = broker.receive(f"Masina_{masina_2.id}")
-        for nume, date in date_primite_de_2.items():
-            masina_2.receive_v2x_message(date)
-
-        # C. Mașinile GÂNDESC (Calcul matematic coliziune + Negociere Groq)
-        masina_1.decide_action(intersectie_x, intersectie_y)
-        masina_2.decide_action(intersectie_x, intersectie_y)
-
-        # D. Mașinile SE MIȘCĂ (Actualizăm poziția X, Y pe baza deciziei)
-        # Presupunem că a trecut 1 secundă între cadre (delta_time = 1)
-        masina_1.update_position(
-            delta_time=1, target_x=intersectie_x, target_y=intersectie_y
-        )
-        masina_2.update_position(
-            delta_time=1, target_x=intersectie_x, target_y=intersectie_y
-        )
-
-        # Afișăm pe ecran unde au ajuns
-        print(
-            f"-> M1 (Normal) e la coordonatele: ({masina_1.x}, {masina_1.y}) cu viteza {masina_1.speed}"
-        )
-        print(
-            f"-> M2 (Ambulanță) e la coordonatele: ({masina_2.x}, {masina_2.y}) cu viteza {masina_2.speed}"
-        )
-
-        time.sleep(
-            1
-        )  # Punem o pauză ca să apucăm să citim în terminal cum decurge acțiunea
-
+    # UI-ul pornește ultimul și rămâne activ pe ecran
+    ui.start(broker)
 
 if __name__ == "__main__":
-    # test_retea_v2x()
-    simulare_live()
+    run_simulation()
