@@ -32,15 +32,16 @@ class VehicleAgent:
             [
                 (
                     "system",
-                    "Ești modulul de decizie AI pentru o mașină autonomă (ID: {my_id}, Tip: {my_type}). "
-                    "Negociezi prioritatea într-o intersecție. "
-                    "REGULI: 1. Ambulanța are mereu prioritate. 2. Dacă ambele sunt mașini normale, mașina cu ID-ul mai mic trece prima pentru a evita blocajele. "
-                    "Răspunde STRICT cu un singur cuvânt: 'FRANEAZA' (dacă cedezi trecerea) sau 'TRECE' (dacă ai prioritate).",
+                    "Ești un agent de trafic AI autonom. Decizi cine trece intersecția.\n"
+                    "Mașina ta: ID {my_id}, tip {my_type}.\n"
+                    "Mașina adversă: ID {other_id}, tip {other_type}.\n\n"
+                    "REGULI STRICTE:\n"
+                    "1. Dacă adversarul este 'ambulance' și tu ești 'normal', răspunzi obligatoriu: FRANEAZA\n"
+                    "2. Dacă tu ești 'ambulance', răspunzi obligatoriu: TRECE\n"
+                    "3. Dacă ambele sunt 'normal', mașina cu ID mai mic răspunde TRECE, iar cea cu ID mai mare răspunde FRANEAZA.\n\n"
+                    "Răspunde DOAR cu un singur cuvânt: FRANEAZA sau TRECE.",
                 ),
-                (
-                    "human",
-                    "Mașina adversă are ID: {other_id} și Tip: {other_type}. Ce decizie iei?",
-                ),
+                ("human", "Analizează datele și ia decizia."),
             ]
         )
 
@@ -106,18 +107,39 @@ class VehicleAgent:
 
             # 3. LOGICA DE COLIZIUNE: Dacă ajungem în intersecție cam în același timp
             # Verificăm dacă diferența de timp e mai mică de 2 secunde
+            # 3. LOGICA DE COLIZIUNE: Dacă ajungem în intersecție cam în același timp
+            # Verificăm dacă diferența de timp e mai mică de 2 secunde
             if abs(my_ttc - other_ttc) < 2.0:
-                print(
-                    f"\n[!] CONFLICT DETECTAT cu mașina ID {other_id}! Se inițiază negocierea AI..."
-                )
+                print(f"\n[!] CONFLICT DETECTAT cu mașina ID {other_id}!")
 
-                # Întrebăm LLM-ul cine are prioritate
+                # --- LOGICA HARDCODATĂ PENTRU PRIORITATE ---
+                # Regula 1: Ambulanța are prioritate absolută
+                other_type = other_data.get("type", "normal")
+
+                if self.type == "normal" and other_type == "ambulance":
+                    self.state = "BRAKING"
+                    self.speed = max(0, self.speed - 5)
+                    print(
+                        f"[{self.id} LOGIC]: FRÂNEZ. Vehicul de urgență detectat (ID {other_id}). Noua viteză: {self.speed}"
+                    )
+                    return
+                elif self.type == "ambulance" and other_type == "normal":
+                    self.state = "CRUISE"
+                    print(
+                        f"[{self.id} LOGIC]: TREC. Sunt vehicul de urgență. Viteza rămâne: {self.speed}"
+                    )
+                    return
+
+                # --- NEGOCIEREA AI (DOAR PENTRU DEADLOCK-URI) ---
+                # Dacă am ajuns aici, înseamnă că ambele sunt "normal" (sau ambele "ambulance")
+                # și au un TTC similar. Aici AI-ul este perfect pentru a rezolva blocajul.
+                print(f"[{self.id}] Se inițiază negocierea AI pentru deadlock...")
                 ai_response = self.chain.invoke(
                     {
                         "my_id": self.id,
                         "my_type": self.type,
                         "other_id": other_id,
-                        "other_type": other_data.get("type", "normal"),
+                        "other_type": other_type,
                     }
                 )
 
@@ -135,10 +157,42 @@ class VehicleAgent:
                         f"[{self.id} AI DECISION]: TREC. Am prioritate în fața mașinii {other_id}. Viteza rămâne: {self.speed}"
                     )
 
-                return
+                return  # Am luat o decizie, oprim analiza pentru acest frame
 
         # Dacă am ajuns aici, înseamnă că bucla a rulat și nu am găsit niciun risc
         print(f"[OK] Drum liber. Trec în starea: {self.state}. Viteza: {self.speed}")
+
+    def update_position(self, delta_time, target_x, target_y):
+        """
+        Mută fizic mașina pe hartă spre o țintă (intersecție), în funcție de viteza ei.
+        delta_time = fracțiunea de secundă care a trecut de la ultimul frame.
+        """
+        # Dacă stăm pe loc, nu ne mișcăm
+        if self.speed <= 0:
+            return
+
+        # 1. Aflăm distanța pe care trebuie să o parcurgem în acest cadru (viteză * timp)
+        # Atenție: viteza e în m/s, delta_time e în secunde
+        distance_to_move = self.speed * delta_time
+
+        # 2. Aflăm unghiul spre intersecție folosind funcția arc-tangentă (atan2)
+        dx = target_x - self.x
+        dy = target_y - self.y
+
+        # Dacă am ajuns deja la țintă, ne oprim
+        if abs(dx) < 0.1 and abs(dy) < 0.1:
+            self.speed = 0
+            return
+
+        angle = math.atan2(dy, dx)
+
+        # 3. Calculăm noile coordonate X și Y
+        self.x += distance_to_move * math.cos(angle)
+        self.y += distance_to_move * math.sin(angle)
+
+        # Rotunjim la 2 zecimale ca să arate frumos
+        self.x = round(self.x, 2)
+        self.y = round(self.y, 2)
 
 
 # --- ZONĂ DE TESTARE LOCALĂ ---
