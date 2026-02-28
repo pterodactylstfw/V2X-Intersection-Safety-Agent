@@ -250,13 +250,25 @@ class SimulationUI:
     def start(self, broker):  # <--- Schimbat din scenario_file în broker
         """Citește datele LIVE din brokerul V2X și le desenează."""
         running = True
+        print("Simularea UI a început. Ascultăm rețeaua V2X LIVE...")
+
         while running:
+            # --- GESTIONARE EVENIMENTE ---
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                
+                # Verificăm dacă s-a apăsat mouse-ul
                 if event.type == pygame.MOUSEBUTTONDOWN:
+                    # VERIFICĂM DACĂ CLICK-UL A FOST PE BUTON
                     if self.button_rect.collidepoint(event.pos):
                         self.system_on = not self.system_on
+                        
+                        # TRIMITEM SEMNALUL CĂTRE LOGICA COLEGULUI (BROKER)
+                        if hasattr(broker, 'infrastructure_active'):
+                            broker.infrastructure_active = self.system_on
+                        
+                        print(f"Sistem V2I schimbat în: {'ON' if self.system_on else 'OFF'}")
 
                         broker.infrastructure_active = self.system_on
 
