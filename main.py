@@ -23,40 +23,32 @@ def run_simulation():
     # 2. Agenții AI (fără parametrul 'speed' care a fost scos de colegul tău)
     agent_a = VehicleAgent(
         agent_id="Masina_A",
-        start_x=0.0,
-        start_y=420.0,
-        target_destination=[1500, 420],
+        start_node="W_START",  # Pleacă din stânga
+        target_node="E_END",  # Merge tot înainte spre dreapta
         desired_speed=60.0,
-        heading="EAST",
     )
 
     agent_a2 = VehicleAgent(
         agent_id="Masina_A2",
-        start_x=-120.0,
-        start_y=420.0,
-        target_destination=[1500, 420],
+        start_node="NW_START",  # Pleacă de sus
+        target_node="S1_END",  # Merge în jos
         desired_speed=75.5,
-        heading="EAST",
     )
 
     agent_b = VehicleAgent(
         agent_id="Ambulanta_B",
-        start_x=380.0,
-        start_y=0.0,
-        target_destination=[380, 800],
+        start_node="S2_START",  # Pleacă de jos-dreapta
+        target_node="W_END",  # Trece diagonala și iese prin stânga
         desired_speed=60.0,
         vehicle_type="Ambulance",
-        heading="SOUTH",
         driving_style="Aggressive",
     )
 
     agent_c = VehicleAgent(
         agent_id="Masina_C",
-        start_x=1120.0,
-        start_y=800.0,
-        target_destination=[1120, 0],
+        start_node="NE_ONEWAY_START",  # Pleacă de pe sensul unic
+        target_node="S2_END",  # Merge spre sud
         desired_speed=60.8,
-        heading="NORTH",
     )
 
     agenti = {
@@ -79,6 +71,15 @@ def run_simulation():
 
     def background_task():
         dt = 0.05
+
+        # Coordonatele aproximative ale celor 4 intersecții noi (I1, I2, I3, I4)
+        intersections = [
+            (380, 650),  # I1
+            (1100, 650),  # I2
+            (380, 320),  # I3
+            (800, 435),  # I4 (Punctul de merge)
+        ]
+
         while True:
             for a_id, agent in list(agenti.items()):
                 # 1. V2X
@@ -86,10 +87,17 @@ def run_simulation():
                 for o_id, o_data in traffic.items():
                     agent.receive_v2x_message(o_data)
 
-                # 2. Alegem intersecția cea mai apropiată (ZONARE)
-                # Intersecția 1 e la x=400, Intersecția 2 la x=1100
-                target_int_x = 400 if agent.position_x < 750 else 1100
-                agent.decide_action(target_int_x, 400)
+                # 2. Alegem dinamic CEA MAI APROPIATĂ intersecție
+                closest_int = intersections[0]
+                min_dist = float("inf")
+                for ix, iy in intersections:
+                    dist = (agent.position_x - ix) ** 2 + (agent.position_y - iy) ** 2
+                    if dist < min_dist:
+                        min_dist = dist
+                        closest_int = (ix, iy)
+
+                # Trimitem coordonatele corecte către AI
+                agent.decide_action(closest_int[0], closest_int[1])
 
                 agent.update_position(dt)
 
