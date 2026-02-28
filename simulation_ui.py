@@ -130,6 +130,11 @@ class SimulationUI:
             if p1 and p2:
                 pygame.draw.line(self.screen, COLOR_ROAD, p1, p2, ROAD_WIDTH_SECONDARY)
 
+        # DESENARE CLĂDIRI (Ajustate ca să nu cadă pe drumurile diagonale)
+        pygame.draw.polygon(self.screen, COLOR_WALL, [(50, 170), (250, 270), (220, 310), (20, 210)], width=0)
+        # pygame.draw.polygon(self.screen, COLOR_WALL, [(270, 350), (270, 370), (370, 370), (370, 350)], width=0)
+
+
         # ====================================================
         # 2. STRATUL MARCAJE (Linii punctate pe axul drumurilor)
         # ====================================================
