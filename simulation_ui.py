@@ -140,56 +140,58 @@ class SimulationUI:
         self.screen.blit(surf, (self.button_rect.x + 20, self.button_rect.y + 10))
 
     def draw_traffic_light_agent(self, current_traffic):
-        """Desenează semafoare cu 3 becuri în afara drumului (dreapta șoferului)."""
+        """Desenează semafoare cu 3 becuri. 'flip' inversează ordinea culorilor."""
         cx, cy = 400, 400
-        stop_dist = 80 # Distanța față de centrul intersecției
-        offset = 65    # Distanța față de axul drumului (îl scoate pe trotuar)
+        stop_dist = 80 
+        offset = 65    
 
-        # Date de la Broker
         sem_data = next((v for v in current_traffic.values() if v.get("agent_id") == "Semafor_Centru"), {})
-        
-        # Stări
         state_ns = sem_data.get("state_NS", "RED")
         state_ew = sem_data.get("state_EW", "RED")
 
-        def draw_pole(x, y, state, orientation="V"):
-            # Desenăm cutia neagră a semaforului
-            box_w, box_h = (20, 60) if orientation == "V" else (60, 20)
-            pygame.draw.rect(self.screen, (30, 30, 30), (x - box_w//2, y - box_h//2, box_w, box_h))
+        def draw_pole(x, y, state, orientation="V", flip=False):
+            # Cutia semaforului
+            box_w, box_h = (22, 60) if orientation == "V" else (60, 22)
+            pygame.draw.rect(self.screen, (20, 20, 20), (x - box_w//2, y - box_h//2, box_w, box_h))
+            pygame.draw.rect(self.screen, (100, 100, 100), (x - box_w//2, y - box_h//2, box_w, box_h), 1) # Contur
             
-            # Logica de culori (Stins vs Aprins)
+            # Culori becuri
             r_col = COLOR_RED if state == "RED" and self.system_on else (60, 0, 0)
             y_col = (60, 60, 0)
             g_col = COLOR_GREEN if state == "GREEN" and self.system_on else (0, 60, 0)
             
-            # Galben intermitent dacă sistemul e OFF
-            if not self.system_on:
-                if (pygame.time.get_ticks() // 500) % 2 == 0:
-                    y_col = COLOR_YELLOW
+            if not self.system_on and (pygame.time.get_ticks() // 500) % 2 == 0:
+                y_col = COLOR_YELLOW
 
-            # Desenăm cele 3 becuri
+            # Calculăm pozițiile becurilor (inversăm dacă flip=True)
             if orientation == "V":
-                pygame.draw.circle(self.screen, r_col, (x, y - 18), 7)
+                # Sus/Jos
+                pos_top = (x, y - 18) if not flip else (x, y + 18)
+                pos_bot = (x, y + 18) if not flip else (x, y - 18)
+                pygame.draw.circle(self.screen, r_col, pos_top, 7)
                 pygame.draw.circle(self.screen, y_col, (x, y), 7)
-                pygame.draw.circle(self.screen, g_col, (x, y + 18), 7)
+                pygame.draw.circle(self.screen, g_col, pos_bot, 7)
             else:
-                pygame.draw.circle(self.screen, r_col, (x - 18, y), 7)
+                # Stânga/Dreapta
+                pos_left = (x - 18, y) if not flip else (x + 18, y)
+                pos_right = (x + 18, y) if not flip else (x - 18, y)
+                pygame.draw.circle(self.screen, r_col, pos_left, 7)
                 pygame.draw.circle(self.screen, y_col, (x, y), 7)
-                pygame.draw.circle(self.screen, g_col, (x + 18, y), 7)
+                pygame.draw.circle(self.screen, g_col, pos_right, 7)
 
-        # --- AMPLASARE (Folosim INTERSECTION_CENTER_Y care este definit global la tine) ---
+        # --- AMPLASARE CU ORDINE CORECTATĂ ---
         
-        # 1. NORD (Banda 380): Semaforul în stânga intersecției, deasupra drumului
-        draw_pole(INT_1_X - offset, INTERSECTION_CENTER_Y - stop_dist, state_ns, "V")
+        # 1. NORD (Intrare de sus): Inversăm ordinea ca Verdele să fie "mai aproape" de intersecție
+        draw_pole(INT_1_X - offset, INTERSECTION_CENTER_Y - stop_dist, state_ns, "V", flip=True)
         
-        # 2. SUD (Banda 420): Semaforul în dreapta intersecției, sub drum
-        draw_pole(INT_1_X + offset, INTERSECTION_CENTER_Y + stop_dist, state_ns, "V")
+        # 2. SUD (Intrare de jos): Ordine normală (Roșu sus, Verde jos)
+        draw_pole(INT_1_X + offset, INTERSECTION_CENTER_Y + stop_dist, state_ns, "V", flip=False)
         
-        # 3. VEST (Banda 420): Semaforul sub drum, în stânga intersecției
-        draw_pole(INT_1_X - stop_dist, INTERSECTION_CENTER_Y + offset, state_ew, "H")
+        # 3. VEST (Intrare din stânga): Inversăm ca Verdele să fie spre dreapta (spre intersecție)
+        draw_pole(INT_1_X - stop_dist, INTERSECTION_CENTER_Y + offset, state_ew, "H", flip=True)
         
-        # 4. EST (Banda 380): Semaforul deasupra drumului, în dreapta intersecției
-        draw_pole(INT_1_X + stop_dist, INTERSECTION_CENTER_Y - offset, state_ew, "H")
+        # 4. EST (Intrare din dreapta): Ordine normală (Roșu stânga, Verde dreapta)
+        draw_pole(INT_1_X + stop_dist, INTERSECTION_CENTER_Y - offset, state_ew, "H", flip=False)
 
     def render_vehicle(self, v_data):
         v_id = v_data.get("agent_id", "?")
