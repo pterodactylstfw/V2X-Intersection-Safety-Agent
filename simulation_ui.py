@@ -13,9 +13,10 @@ INTERSECTION_CENTER_Y = SCREEN_HEIGHT // 2
 COLOR_BACKGROUND = (0, 0, 0)
 COLOR_ROAD = (255, 255, 255)
 COLOR_WALL = (160, 160, 160)
-COLOR_TEXT_ALL = (102, 178, 255)       # Culoarea cerută pentru tot textul
-COLOR_NORMAL_CAR = (153, 153, 255)     # Culoarea cerută pentru mașini normale
-COLOR_AMBULANCE_CAR = (204, 0, 0)      # Culoarea cerută pentru ambulanță
+COLOR_TEXT_ALL = (102, 178, 255)  # Culoarea cerută pentru tot textul
+COLOR_NORMAL_CAR = (153, 153, 255)  # Culoarea cerută pentru mașini normale
+COLOR_AMBULANCE_CAR = (204, 0, 0)  # Culoarea cerută pentru ambulanță
+
 
 class SimulationUI:
     def __init__(self, title="V2X Intersection Scenario Player"):
@@ -26,27 +27,41 @@ class SimulationUI:
         # Fonturile folosesc culoarea ta (102, 178, 255)
         self.font = pygame.font.SysFont("timesnewroman", 18, bold=True)
         self.small_font = pygame.font.SysFont("timesnewroman", 14)
-        self.fps = 30 # Setează viteza de redare a scenariului
+        self.fps = 60  # Setează viteza de redare a scenariului
 
     def draw_environment(self):
         """Desenează intersecția și zidurile tale originale."""
         self.screen.fill(COLOR_BACKGROUND)
-        
+
         # Drum Orizontal
-        pygame.draw.rect(self.screen, COLOR_ROAD, 
-                        (0, INTERSECTION_CENTER_Y - ROAD_WIDTH//2, SCREEN_WIDTH, ROAD_WIDTH))
+        pygame.draw.rect(
+            self.screen,
+            COLOR_ROAD,
+            (0, INTERSECTION_CENTER_Y - ROAD_WIDTH // 2, SCREEN_WIDTH, ROAD_WIDTH),
+        )
         # Drum Vertical
-        pygame.draw.rect(self.screen, COLOR_ROAD, 
-                        (INTERSECTION_CENTER_X - ROAD_WIDTH//2, 0, ROAD_WIDTH, SCREEN_HEIGHT))
-        
+        pygame.draw.rect(
+            self.screen,
+            COLOR_ROAD,
+            (INTERSECTION_CENTER_X - ROAD_WIDTH // 2, 0, ROAD_WIDTH, SCREEN_HEIGHT),
+        )
+
         # ZIDUL 1 (Coordonatele tale)
-        wall_rect = pygame.Rect(INTERSECTION_CENTER_X - ROAD_WIDTH//2 - 200, 
-                                INTERSECTION_CENTER_Y - ROAD_WIDTH//2 - 100, 200, 100)
+        wall_rect = pygame.Rect(
+            INTERSECTION_CENTER_X - ROAD_WIDTH // 2 - 200,
+            INTERSECTION_CENTER_Y - ROAD_WIDTH // 2 - 100,
+            200,
+            100,
+        )
         pygame.draw.rect(self.screen, COLOR_WALL, wall_rect)
-        
+
         # ZIDUL 2 (Coordonatele tale)
-        wall_rect_2 = pygame.Rect(INTERSECTION_CENTER_X + ROAD_WIDTH//2, 
-                                  INTERSECTION_CENTER_Y + ROAD_WIDTH//2, 100, 200)
+        wall_rect_2 = pygame.Rect(
+            INTERSECTION_CENTER_X + ROAD_WIDTH // 2,
+            INTERSECTION_CENTER_Y + ROAD_WIDTH // 2,
+            100,
+            200,
+        )
         pygame.draw.rect(self.screen, COLOR_WALL, wall_rect_2)
 
     def render_vehicle(self, v_data):
@@ -54,10 +69,10 @@ class SimulationUI:
         x = v_data.get("position_x", 0)
         y = v_data.get("position_y", 0)
         v_type = v_data.get("vehicle_type", "Normal")
-        
+
         # Dacă 'heading' lipsește, presupunem că merge spre NORD (nu mai dă eroare)
-        heading = v_data.get("heading", "NORTH") 
-        
+        heading = v_data.get("heading", "NORTH")
+
         v_id = v_data.get("agent_id", "Unknown")
         intent = v_data.get("intent", "IDLE")
         priority = v_data.get("priority_active", False)
@@ -74,7 +89,7 @@ class SimulationUI:
             width, height = 48, 28
 
         # 3. Desenare Mașină
-        rect = pygame.Rect(x - width//2, y - height//2, width, height)
+        rect = pygame.Rect(x - width // 2, y - height // 2, width, height)
         pygame.draw.rect(self.screen, color, rect)
 
         # 4. Efect Prioritate Activă (Sirenă)
@@ -85,12 +100,17 @@ class SimulationUI:
         # 5. Randare Text cu culoarea (102, 178, 255)
         id_surf = self.font.render(v_id, True, COLOR_TEXT_ALL)
         intent_surf = self.small_font.render(f"[{intent}]", True, COLOR_TEXT_ALL)
-        
-        # Poziționare text
-        self.screen.blit(id_surf, (x - 20, y - height//2 - 20))
-        self.screen.blit(intent_surf, (x - 20, y - height//2 - 35))
 
-    def start(self, broker): # Primim broker-ul, NU fisierul JSON
+        speed_surf = self.small_font.render(
+            f"V: {v_data.get('speed', 0):.1f} px/s", True, COLOR_TEXT_ALL
+        )
+        self.screen.blit(speed_surf, (x - 20, y + height // 2 + 5))
+
+        # Poziționare text
+        self.screen.blit(id_surf, (x - 20, y - height // 2 - 20))
+        self.screen.blit(intent_surf, (x - 20, y - height // 2 - 35))
+
+    def start(self, broker):  # Primim broker-ul, NU fisierul JSON
         """Citește datele LIVE din brokerul V2X și le desenează."""
         running = True
         print("Simularea UI a început. Ascultăm rețeaua V2X...")
@@ -112,12 +132,13 @@ class SimulationUI:
                 self.render_vehicle(v_data)
 
             pygame.display.flip()
-            self.clock.tick(60) # UI-ul poate rula la 60 FPS pentru fluiditate
+            self.clock.tick(60)  # UI-ul poate rula la 60 FPS pentru fluiditate
 
         pygame.quit()
+
 
 # ===== EXECUTARE =====
 if __name__ == "__main__":
     ui = SimulationUI()
     # Asigură-te că fișierul se numește exact 'scenariu.json' și este în același folder
-    ui.start('scenariu.json')
+    ui.start("scenariu.json")
