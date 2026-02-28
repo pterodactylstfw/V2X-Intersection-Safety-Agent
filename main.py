@@ -112,10 +112,10 @@ def run_simulation():
 
     def is_outside_screen(agent):
         return (
-            agent.position_x < 0
-            or agent.position_x > 1500
-            or agent.position_y < 0
-            or agent.position_y > 800
+            agent.position_x < -50
+            or agent.position_x > 1550
+            or agent.position_y < -50
+            or agent.position_y > 850
         )
 
     def background_task():
