@@ -20,7 +20,10 @@ COLOR_WALL = (160, 160, 160)
 COLOR_TEXT = (102, 178, 255)
 COLOR_NORMAL_CAR = (153, 153, 255)
 COLOR_AMBULANCE_CAR = (204, 0, 0)
-
+COLOR_RED = (255, 0, 0)
+COLOR_GREEN = (0, 255, 0)
+COLOR_YELLOW = (255, 165, 0)
+COLOR_OFF = (40, 40, 40)
 
 class SimulationUI:
     def __init__(self, title="V2X Multi-Lane Simulator"):
@@ -31,6 +34,12 @@ class SimulationUI:
         self.font = pygame.font.SysFont("timesnewroman", 16, bold=True)
         self.small_font = pygame.font.SysFont("timesnewroman", 13)
         self.fps = 30
+        self.system_on = True  # Starea sistemului de semaforizare
+        self.button_rect = pygame.Rect(20, 20, 150, 40)
+        self.COLOR_RED_OFF = (60, 0, 0)
+        self.COLOR_YELLOW_OFF = (60, 60, 0)
+        self.COLOR_GREEN_OFF = (0, 60, 0)
+        self.COLOR_BLACK_BOX = (30, 30, 30)
 
         try:
             self.img_normal = pygame.image.load("car.png").convert_alpha()
@@ -122,23 +131,76 @@ class SimulationUI:
             (INT_2_X - 240, INTERSECTION_CENTER_Y - 140, 200, 100),
         )
 
+    def draw_button(self):
+        """Desenează butonul de control al sistemului."""
+        color = (0, 180, 0) if self.system_on else (180, 0, 0)
+        pygame.draw.rect(self.screen, color, self.button_rect, border_radius=5)
+        text = "SISTEM: ON" if self.system_on else "SISTEM: OFF"
+        surf = self.font.render(text, True, (255, 255, 255))
+        self.screen.blit(surf, (self.button_rect.x + 20, self.button_rect.y + 10))
+
+    def draw_traffic_light_agent(self, current_traffic):
+        """Desenează semafoare cu 3 becuri în afara drumului (dreapta șoferului)."""
+        cx, cy = 400, 400
+        stop_dist = 80 # Distanța față de centrul intersecției
+        offset = 65    # Distanța față de axul drumului (îl scoate pe trotuar)
+
+        # Date de la Broker
+        sem_data = next((v for v in current_traffic.values() if v.get("agent_id") == "Semafor_Centru"), {})
+        
+        # Stări
+        state_ns = sem_data.get("state_NS", "RED")
+        state_ew = sem_data.get("state_EW", "RED")
+
+        def draw_pole(x, y, state, orientation="V"):
+            # Desenăm cutia neagră a semaforului
+            box_w, box_h = (20, 60) if orientation == "V" else (60, 20)
+            pygame.draw.rect(self.screen, (30, 30, 30), (x - box_w//2, y - box_h//2, box_w, box_h))
+            
+            # Logica de culori (Stins vs Aprins)
+            r_col = COLOR_RED if state == "RED" and self.system_on else (60, 0, 0)
+            y_col = (60, 60, 0)
+            g_col = COLOR_GREEN if state == "GREEN" and self.system_on else (0, 60, 0)
+            
+            # Galben intermitent dacă sistemul e OFF
+            if not self.system_on:
+                if (pygame.time.get_ticks() // 500) % 2 == 0:
+                    y_col = COLOR_YELLOW
+
+            # Desenăm cele 3 becuri
+            if orientation == "V":
+                pygame.draw.circle(self.screen, r_col, (x, y - 18), 7)
+                pygame.draw.circle(self.screen, y_col, (x, y), 7)
+                pygame.draw.circle(self.screen, g_col, (x, y + 18), 7)
+            else:
+                pygame.draw.circle(self.screen, r_col, (x - 18, y), 7)
+                pygame.draw.circle(self.screen, y_col, (x, y), 7)
+                pygame.draw.circle(self.screen, g_col, (x + 18, y), 7)
+
+        # --- AMPLASARE (Folosim INTERSECTION_CENTER_Y care este definit global la tine) ---
+        
+        # 1. NORD (Banda 380): Semaforul în stânga intersecției, deasupra drumului
+        draw_pole(INT_1_X - offset, INTERSECTION_CENTER_Y - stop_dist, state_ns, "V")
+        
+        # 2. SUD (Banda 420): Semaforul în dreapta intersecției, sub drum
+        draw_pole(INT_1_X + offset, INTERSECTION_CENTER_Y + stop_dist, state_ns, "V")
+        
+        # 3. VEST (Banda 420): Semaforul sub drum, în stânga intersecției
+        draw_pole(INT_1_X - stop_dist, INTERSECTION_CENTER_Y + offset, state_ew, "H")
+        
+        # 4. EST (Banda 380): Semaforul deasupra drumului, în dreapta intersecției
+        draw_pole(INT_1_X + stop_dist, INTERSECTION_CENTER_Y - offset, state_ew, "H")
+
     def render_vehicle(self, v_data):
+        v_id = v_data.get("agent_id", "?")
+        if v_id == "Semafor_Centru" or v_data.get("vehicle_type") == "Infrastructure":
+            return 
         v_type = v_data.get("vehicle_type", "Normal")
         x, y = v_data.get("position_x", 0), v_data.get("position_y", 0)
         heading = v_data.get("heading", "EAST")
         v_id = v_data.get("agent_id", "?")
         intent = v_data.get("intent", "IDLE")
         speed = v_data.get("speed", 0)
-
-        # --- 1. DESENARE SEMAFOR (V2I) ---
-        if v_type == "Infrastructure":
-            # Indicator Nord-Sud
-            color_ns = (0, 255, 0) if v_data.get("state_NS") == "GREEN" else (255, 0, 0)
-            pygame.draw.circle(self.screen, color_ns, (int(x), int(y) - 50), 10)
-            # Indicator Est-Vest
-            color_ew = (0, 255, 0) if v_data.get("state_EW") == "GREEN" else (255, 0, 0)
-            pygame.draw.circle(self.screen, color_ew, (int(x) - 50, int(y)), 10)
-            return  # Ieșim, restul funcției e doar pentru mașini
 
         # --- 2. DESENARE MAȘINĂ (V2V) ---
         if self.use_images:
@@ -176,14 +238,16 @@ class SimulationUI:
     def start(self, broker):  # <--- Schimbat din scenario_file în broker
         """Citește datele LIVE din brokerul V2X și le desenează."""
         running = True
-        print("Simularea UI a început. Ascultăm rețeaua V2X LIVE...")
-
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if self.button_rect.collidepoint(event.pos):
+                        self.system_on = not self.system_on
 
             self.draw_environment()
+            self.draw_button()
 
             # --- CITIM DATELE LIVE DIN BROKER ---
             with broker.lock:
@@ -198,6 +262,8 @@ class SimulationUI:
 
                 # Facem o copie a statusului mașinilor din rețea
                 current_traffic = broker.vehicles_status.copy()
+
+            self.draw_traffic_light_agent(current_traffic)
 
             # Desenăm fiecare mașină/semafor care este în rețea
             for v_id, v_data in current_traffic.items():
