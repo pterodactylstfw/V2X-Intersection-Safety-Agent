@@ -25,6 +25,7 @@ COLOR_GREEN = (0, 255, 0)
 COLOR_YELLOW = (255, 165, 0)
 COLOR_OFF = (40, 40, 40)
 
+
 class SimulationUI:
     def __init__(self, title="V2X Multi-Lane Simulator"):
         pygame.init()
@@ -145,7 +146,17 @@ class SimulationUI:
         stop_dist = 80 
         offset = 65    
 
-        sem_data = next((v for v in current_traffic.values() if v.get("agent_id") == "Semafor_Centru"), {})
+        # Date de la Broker
+        sem_data = next(
+            (
+                v
+                for v in current_traffic.values()
+                if v.get("agent_id") == "Semafor_Centru"
+            ),
+            {},
+        )
+
+        # Stări
         state_ns = sem_data.get("state_NS", "RED")
         state_ew = sem_data.get("state_EW", "RED")
 
@@ -196,7 +207,7 @@ class SimulationUI:
     def render_vehicle(self, v_data):
         v_id = v_data.get("agent_id", "?")
         if v_id == "Semafor_Centru" or v_data.get("vehicle_type") == "Infrastructure":
-            return 
+            return
         v_type = v_data.get("vehicle_type", "Normal")
         x, y = v_data.get("position_x", 0), v_data.get("position_y", 0)
         heading = v_data.get("heading", "EAST")
@@ -259,6 +270,8 @@ class SimulationUI:
                             broker.infrastructure_active = self.system_on
                         
                         print(f"Sistem V2I schimbat în: {'ON' if self.system_on else 'OFF'}")
+
+                        broker.infrastructure_active = self.system_on
 
             self.draw_environment()
             self.draw_button()

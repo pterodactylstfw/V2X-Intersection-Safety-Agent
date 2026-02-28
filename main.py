@@ -1,5 +1,6 @@
 import threading
 import time
+from traffic_light import TrafficLightAgent
 from v2x_network import V2XBroker
 from vehicle_agent import VehicleAgent
 from simulation_ui import SimulationUI
@@ -9,6 +10,9 @@ def run_simulation():
     # 1. Infrastructura
     broker = V2XBroker()
     ui = SimulationUI()
+
+    semafor = TrafficLightAgent(broker)
+    semafor.start()
 
     # 2. Agenții (Toți cei 4 conform regulilor de circulație RO)
 

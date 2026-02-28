@@ -109,6 +109,50 @@ class VehicleAgent:
             self._recover_speed()
             return
 
+        # --- LOGICA PENTRU SEMAFOR (V2I) ---
+        used_infrastructure = False
+        for other_id, other_data in list(self.memory.items()):
+            if other_data.get("vehicle_type") == "Infrastructure":
+                used_infrastructure = True
+
+                if self.heading in ["NORTH", "SOUTH"]:
+                    light_state = other_data.get("state_NS", "YELLOW_BLINKING")
+                else:
+                    light_state = other_data.get("state_EW", "YELLOW_BLINKING")
+
+                # Dacă semaforul e pe avarie, trecem la V2V direct
+                if light_state == "YELLOW_BLINKING":
+                    used_infrastructure = False
+                    break
+
+                # La ROȘU sau GALBEN
+                if light_state in ["RED", "YELLOW"]:
+                    # Frânăm doar dacă nu am intrat deja adânc în intersecție (< 30px)
+                    # Astfel, forțăm mașina să respecte roșul și să nu intre în V2V
+                    if dist_to_int > 30.0:
+                        # Printăm în consolă să vedem clar de ce oprește
+                        # print(f"[{self.agent_id}] Opresc la SEMAFOR ({light_state}). Distanța: {dist_to_int:.1f}")
+                        self._brake(f"Semafor {light_state}")
+                        return
+
+                # La VERDE
+                if light_state == "GREEN":
+                    # print(f"[{self.agent_id}] Am VERDE, trec fără V2V!")
+                    break
+
+            if other_data.get("vehicle_type") == "Ambulance":
+                # REPARAȚIE: Cedăm doar dacă ambulanța are viteză (se deplasează)
+                # SAU dacă e deja foarte aproape de centrul intersecției
+                o_speed = other_data.get("speed", 0)
+                o_dist_to_int = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
+
+                if o_speed > 1.0 or o_dist_to_int < 50:
+                    self._brake("Prioritate Ambulanță în mișcare")
+                    return
+                else:
+                    # Dacă ambulanța stă la roșu, o ignorăm și mergem pe treaba noastră
+                    continue
+
         my_ttc = self.calculate_ttc(int_x, int_y)
         conflict_detected = False
 

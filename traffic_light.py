@@ -1,75 +1,90 @@
-import time
+import math
 import threading
+import time
 
 
-class IntelligentTrafficLight:
+class TrafficLightAgent:
     def __init__(self, broker, agent_id="Semafor_Centru"):
         self.broker = broker
         self.agent_id = agent_id
-
-        # Starea inițială a intersecției (Verde pentru Nord-Sud, Roșu pentru Est-Vest)
-        self.state_NS = "GREEN"  # Axa Nord-Sud (Vertical)
-        self.state_EW = "RED"  # Axa Est-Vest (Orizontal)
-
-        self.timer = 0
-        self.switch_interval = (
-            50  # Schimbă culoarea la fiecare 5 secunde (50 cicluri de 0.1s)
-        )
+        self.state_NS = "GREEN"  # Axa Nord-Sud
+        self.state_EW = "RED"  # Axa Est-Vest
+        self.running = True
 
     def start(self):
-        """Pornește "creierul" semaforului pe un thread separat."""
-        threading.Thread(target=self._run_logic, daemon=True).start()
+        """Pornim semaforul pe un thread separat pentru a nu bloca interfața grafică."""
+        threading.Thread(target=self._run_loop, daemon=True).start()
 
-    def _run_logic(self):
-        print(f"[{self.agent_id}] V2I pornit! Monitorizez intersecția...")
-        while True:
-            # 1. Ascultăm traficul din rețeaua V2X
+    def _run_loop(self):
+        while self.running:
+            # 1. VERIFICARE BUTON AVARIE (folosim getattr pentru siguranță în caz că uităm flag-ul)
+            if not getattr(self.broker, "infrastructure_active", True):
+                self._publish_state("YELLOW_BLINKING", "YELLOW_BLINKING")
+                time.sleep(0.5)  # Rulăm frecvent pentru a detecta repornirea
+                continue
+
             traffic_data = self.broker.receive(self.agent_id)
-            emergency_detected = False
-
+            emergency_heading = None
             for v_id, v_data in traffic_data.items():
-                # Dacă mașina curentă a declarat că are PRIORITATE ACTIVĂ (ex: Ambulanță)
-                if v_data.get("priority_active") == True:
-                    emergency_detected = True
-                    heading = v_data.get("heading", "")
-
-                    # Funcția de Preemption: Îi dăm verde instantaneu pe axa pe care vine!
-                    if heading in ["NORTH", "SOUTH"]:
-                        self.state_NS = "GREEN"
-                        self.state_EW = "RED"
-                    elif heading in ["EAST", "WEST"]:
-                        self.state_NS = "RED"
-                        self.state_EW = "GREEN"
-
-                    print(
-                        f"!!! [V2I ALARMĂ] Semaforul a detectat {v_id}. S-a forțat VERDE pentru {heading}! !!!"
+                if v_data.get("vehicle_type") == "Ambulance":  # Dacă e ambulanță
+                    dist_to_center = math.sqrt(
+                        (400 - v_data["position_x"]) ** 2
+                        + (400 - v_data["position_y"]) ** 2
                     )
-                    break  # Ieșim din buclă, am rezolvat urgența
+                    if dist_to_center < 300:  # Și e aproape de intersecție
+                        emergency_heading = v_data.get("heading")
+                        break
 
-            # 2. Dacă NU e nicio urgență, semaforul își vede de ciclul lui normal
-            if not emergency_detected:
-                self.timer += 1
-                if self.timer >= self.switch_interval:
-                    self.timer = 0  # Resetăm timer-ul
-                    # Inversăm culorile
-                    if self.state_NS == "GREEN":
-                        self.state_NS = "RED"
-                        self.state_EW = "GREEN"
-                    else:
-                        self.state_NS = "GREEN"
-                        self.state_EW = "RED"
+            if emergency_heading:
+                if emergency_heading in ["NORTH", "SOUTH"]:
+                    self._publish_state("GREEN", "RED")  # Forțăm verde pe Nord-Sud
+                else:
+                    self._publish_state("RED", "GREEN")  # Forțăm verde pe Est-Vest
+                time.sleep(0.1)
+                continue  # Sari peste ciclul normal cât timp e urgență
 
-            # 3. Publicăm starea semaforului înapoi în rețea (mesaj SPaT)
-            spat_message = {
-                "agent_id": self.agent_id,
-                "vehicle_type": "Infrastructure",  # Ca să știe interfața și logica ce e
-                "state_NS": self.state_NS,
-                "state_EW": self.state_EW,
-                # Recomandăm viteză mașinilor în funcție de culoare
-                "recommended_speed_NS": 5.0 if self.state_NS == "GREEN" else 0.0,
-                "recommended_speed_EW": 5.0 if self.state_EW == "GREEN" else 0.0,
-            }
+            # 2. CICLUL NORMAL
+            # NS Verde, EW Roșu
+            self._publish_state("GREEN", "RED")
+            if not self._wait_interruptible(5.0):
+                continue
 
-            self.broker.publish(self.agent_id, spat_message)
+            # NS Galben, EW Roșu
+            self._publish_state("YELLOW", "RED")
+            if not self._wait_interruptible(2.0):
+                continue
 
-            time.sleep(0.1)  # Bucla rulează de 10 ori pe secundă
+            # NS Roșu, EW Verde
+            self._publish_state("RED", "GREEN")
+            if not self._wait_interruptible(5.0):
+                continue
+
+            # NS Roșu, EW Galben
+            self._publish_state("RED", "YELLOW")
+            if not self._wait_interruptible(2.0):
+                continue
+
+    def _wait_interruptible(self, duration):
+        """Așteaptă un anumit timp, dar se oprește imediat dacă utilizatorul apasă butonul de avarie.
+        Returnează True dacă ciclul s-a terminat normal, False dacă a fost întrerupt."""
+        steps = int(duration / 0.1)
+        for _ in range(steps):
+            if not getattr(self.broker, "infrastructure_active", True):
+                return False
+            time.sleep(0.1)
+        return True
+
+    def _publish_state(self, ns, ew):
+        """Trimite starea curentă către toate mașinile din rețea."""
+        self.state_NS = ns
+        self.state_EW = ew
+        data_package = {
+            "agent_id": self.agent_id,
+            "vehicle_type": "Infrastructure",
+            "state_NS": self.state_NS,
+            "state_EW": self.state_EW,
+            # Poți ajusta coordonatele centrului intersecției tale aici:
+            "position_x": 400,
+            "position_y": 400,
+        }
+        self.broker.publish(self.agent_id, data_package)
