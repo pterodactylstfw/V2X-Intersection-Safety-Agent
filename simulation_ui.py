@@ -1,83 +1,141 @@
 import pygame
+import sys
+import json
 
+# --- CONFIGURAȚII ---
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 800
-ROAD_WIDTH = 150
+ROAD_WIDTH = 100
+INTERSECTION_CENTER_X = SCREEN_WIDTH // 2
+INTERSECTION_CENTER_Y = SCREEN_HEIGHT // 2
+
+# CULORI DEFINITE DE TINE
 COLOR_BACKGROUND = (0, 0, 0)
 COLOR_ROAD = (255, 255, 255)
 COLOR_WALL = (160, 160, 160)
-COLOR_TEXT = (102, 178, 224)
-
-class DummyVehicle:
-    def __init__(self, id, x, y, color):
-        self.id = id
-        self.x = x
-        self.y = y
-        self.width = 40
-        self.height = 25
-        self.color = color
+COLOR_TEXT_ALL = (102, 178, 255)       # Culoarea cerută pentru tot textul
+COLOR_NORMAL_CAR = (153, 153, 255)     # Culoarea cerută pentru mașini normale
+COLOR_AMBULANCE_CAR = (204, 0, 0)      # Culoarea cerută pentru ambulanță
 
 class SimulationUI:
-    def __init__(self):
+    def __init__(self, title="V2X Intersection Scenario Player"):
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("V2X Intersection Simulator")
+        pygame.display.set_caption(title)
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont("timesnewroman", 20)
+        # Fonturile folosesc culoarea ta (102, 178, 255)
+        self.font = pygame.font.SysFont("timesnewroman", 18, bold=True)
+        self.small_font = pygame.font.SysFont("timesnewroman", 14)
+        self.fps = 30 # Setează viteza de redare a scenariului
 
     def draw_environment(self):
+        """Desenează intersecția și zidurile tale originale."""
         self.screen.fill(COLOR_BACKGROUND)
-        # drumuri orizontale / verticale
-        pygame.draw.rect(self.screen, COLOR_ROAD, (0, SCREEN_HEIGHT//2 - ROAD_WIDTH//2, SCREEN_WIDTH, ROAD_WIDTH))
-        pygame.draw.rect(self.screen, COLOR_ROAD, (SCREEN_WIDTH//2 - ROAD_WIDTH//2, 0, ROAD_WIDTH, SCREEN_HEIGHT))
         
-        # ziduri
-        wall_rect = pygame.Rect(SCREEN_WIDTH//2 - ROAD_WIDTH//2 - 100, 
-                                SCREEN_HEIGHT//2 - ROAD_WIDTH//2 - 100, 100, 100)
+        # Drum Orizontal
+        pygame.draw.rect(self.screen, COLOR_ROAD, 
+                        (0, INTERSECTION_CENTER_Y - ROAD_WIDTH//2, SCREEN_WIDTH, ROAD_WIDTH))
+        # Drum Vertical
+        pygame.draw.rect(self.screen, COLOR_ROAD, 
+                        (INTERSECTION_CENTER_X - ROAD_WIDTH//2, 0, ROAD_WIDTH, SCREEN_HEIGHT))
+        
+        # ZIDUL 1 (Coordonatele tale)
+        wall_rect = pygame.Rect(INTERSECTION_CENTER_X - ROAD_WIDTH//2 - 200, 
+                                INTERSECTION_CENTER_Y - ROAD_WIDTH//2 - 100, 200, 100)
         pygame.draw.rect(self.screen, COLOR_WALL, wall_rect)
+        
+        # ZIDUL 2 (Coordonatele tale)
+        wall_rect_2 = pygame.Rect(INTERSECTION_CENTER_X + ROAD_WIDTH//2, 
+                                  INTERSECTION_CENTER_Y + ROAD_WIDTH//2, 100, 200)
+        pygame.draw.rect(self.screen, COLOR_WALL, wall_rect_2)
 
-    def update_display(self, vehicles):
-        self.draw_environment()
+    def render_vehicle(self, v_data):
+        """Afișează mașina conform datelor din frame-ul curent."""
+        x = v_data["position_x"]
+        y = v_data["position_y"]
+        v_type = v_data["vehicle_type"]
+        heading = v_data["heading"]
+        v_id = v_data["agent_id"]
+        intent = v_data["intent"]
+        priority = v_data.get("priority_active", False)
 
-        for vehicle in vehicles:
-            rect = pygame.Rect(vehicle.x, vehicle.y, vehicle.width, vehicle.height)
-            pygame.draw.rect(self.screen, vehicle.color, rect)
-            
-            text_surface = self.font.render(f"ID: {vehicle.id}", True, COLOR_TEXT)
-            self.screen.blit(text_surface, (vehicle.x, vehicle.y - 25))
+        # 1. Culoarea mașinii: Ambulanță (204,0,0) vs Normală (153,153,255)
+        color = COLOR_AMBULANCE_CAR if v_type == "Ambulance" else COLOR_NORMAL_CAR
 
-        pygame.display.flip()
-        self.clock.tick(60)
+        # 2. Forma mașinii (Heading):
+        # Dacă merge NORTH/SOUTH e verticală (|), dacă merge EAST/WEST e orizontală (--)
+        if heading in ["NORTH", "SOUTH"]:
+            width, height = 28, 48
+        else:
+            width, height = 48, 28
 
-    def quit(self):
+        # 3. Desenare Mașină
+        rect = pygame.Rect(x - width//2, y - height//2, width, height)
+        pygame.draw.rect(self.screen, color, rect)
+
+        # 4. Efect Prioritate Activă (Sirenă)
+        if priority and (pygame.time.get_ticks() // 250) % 2 == 0:
+            # Contur de evidențiere (folosim alb pentru contrast la sirenă)
+            pygame.draw.rect(self.screen, (255, 255, 255), rect, 3)
+
+        # 5. Randare Text cu culoarea (102, 178, 255)
+        id_surf = self.font.render(v_id, True, COLOR_TEXT_ALL)
+        intent_surf = self.small_font.render(f"[{intent}]", True, COLOR_TEXT_ALL)
+        
+        # Poziționare text
+        self.screen.blit(id_surf, (x - 20, y - height//2 - 20))
+        self.screen.blit(intent_surf, (x - 20, y - height//2 - 35))
+
+    def start(self, scenario_file):
+        """Încarcă JSON-ul și rulează animația frame cu frame."""
+        try:
+            with open(scenario_file, 'r') as f:
+                scenario_data = json.load(f)
+        except Exception as e:
+            print(f"Eroare la încărcarea JSON: {e}")
+            return
+
+        frame_idx = 0
+        total_frames = len(scenario_data)
+        running = True
+
+        print(f"Simularea a început. Total frame-uri: {total_frames}")
+
+        while running:
+            # Verificare evenimente (IMPORTANT: Previne blocarea ferestrei)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    running = False
+
+            # Desenăm fundalul și drumurile
+            self.draw_environment()
+
+            # Dacă mai avem date în scenariu, le afișăm
+            if frame_idx < total_frames:
+                current_frame = scenario_data[frame_idx]
+                
+                # Parcurgem toate mașinile din lista curentă (frame-ul actual)
+                for vehicle in current_frame:
+                    self.render_vehicle(vehicle)
+                
+                frame_idx += 1 # Trecem la următoarea stare în timp
+            else:
+                # Am ajuns la finalul scenariului
+                # frame_idx = 0 # (Opțional: decomentează dacă vrei să se repete la infinit)
+                pass
+
+            # Update display
+            pygame.display.flip()
+            # Control viteză (FPS)
+            self.clock.tick(self.fps)
+
         pygame.quit()
+        sys.exit()
 
-# TEST 
+# ===== EXECUTARE =====
 if __name__ == "__main__":
     ui = SimulationUI()
-    
-    # Creăm 2 mașini de test
-    car1 = DummyVehicle("V2X_01", 100, 335, (0, 0, 255))  # Albastră
-    car2 = DummyVehicle("V2X_02", 435, 100, (255, 0, 0))  # Roșie
-    list_of_vehicles = [car1, car2]
-
-    running = True
-    while running:
-        # inchidere fereastra
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-
-        # Simulăm o mică mișcare
-        car1.x += 2
-        car2.y += 2
-
-        # Resetăm mașinile dacă ies din ecran (loop)
-        if car1.x > 800: car1.x = 0
-        if car2.y > 800: car2.y = 0
-
-        # Desenăm totul
-        ui.update_display(list_of_vehicles)
-
-    ui.quit()
-    sys.exit()
+    # Asigură-te că fișierul se numește exact 'scenariu.json' și este în același folder
+    ui.start('scenariu.json')
