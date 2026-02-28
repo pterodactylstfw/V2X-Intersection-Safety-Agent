@@ -26,7 +26,7 @@ def run_simulation():
         start_x=0.0,
         start_y=420.0,
         target_destination=[1500, 420],
-        desired_speed=70.0,
+        desired_speed=60.0,
         heading="EAST",
     )
 
@@ -44,7 +44,7 @@ def run_simulation():
         start_x=380.0,
         start_y=0.0,
         target_destination=[380, 800],
-        desired_speed=70.0,
+        desired_speed=60.0,
         vehicle_type="Ambulance",
         heading="SOUTH",
         driving_style="Aggressive",
