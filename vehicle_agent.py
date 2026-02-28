@@ -69,19 +69,66 @@ class VehicleAgent:
         return distance / self.speed
 
     def decide_action(self, intersection_x, intersection_y):
-        dist_to_int = math.sqrt(
-            (intersection_x - self.position_x) ** 2
-            + (intersection_y - self.position_y) ** 2
-        )
+        # Dacă deja așteptăm decizia AI-ului, punem frână ca să nu intrăm orbește în intersecție!
+        if getattr(self, "waiting_for_ai", False):
+            self._brake("Aștept decizie AI (Frânare preventivă)")
+            return
 
+<<<<<<< Updated upstream
         if dist_to_int > 250:
             self._recover_speed()
+=======
+        # ==========================================
+        # 1. ACC (Păstrarea distanței față de mașina din față)
+        # ==========================================
+        for other_id, other_data in list(self.memory.items()):
+            if other_data.get("vehicle_type") == "Infrastructure":
+                continue
+
+            ox, oy = other_data.get("position_x", 0), other_data.get("position_y", 0)
+            oh = other_data.get("heading", "")
+
+            if oh == self.heading:
+                is_in_front = False
+                if self.heading == "EAST" and ox > self.position_x and abs(oy - self.position_y) < 20: is_in_front = True
+                elif self.heading == "WEST" and ox < self.position_x and abs(oy - self.position_y) < 20: is_in_front = True
+                elif self.heading == "SOUTH" and oy > self.position_y and abs(ox - self.position_x) < 20: is_in_front = True
+                elif self.heading == "NORTH" and oy < self.position_y and abs(ox - self.position_x) < 20: is_in_front = True
+
+                if is_in_front:
+                    dist_to_front = math.sqrt((ox - self.position_x)**2 + (oy - self.position_y)**2)
+                    if dist_to_front < 80.0:  # 80px distanță de siguranță
+                        self._brake(f"ACC: Frânez pentru {other_id}")
+                        return 
+
+        # ==========================================
+        # 2. V2I (Semaforul)
+        # ==========================================
+        distance_to_center = math.sqrt((intersection_x - self.position_x)**2 + (intersection_y - self.position_y)**2)
+        semafor_data = self.memory.get("Semafor_Centru")
+        
+        if semafor_data and self.vehicle_type != "Ambulance":
+            culoare_axa_mea = "GREEN"
+            if self.heading in ["NORTH", "SOUTH"]: culoare_axa_mea = semafor_data.get("state_NS", "GREEN")
+            elif self.heading in ["EAST", "WEST"]: culoare_axa_mea = semafor_data.get("state_EW", "GREEN")
+                
+            if culoare_axa_mea == "RED" and distance_to_center < 150.0:
+                self._brake("V2I: Opresc la Semafor ROȘU")
+                return 
+
+        # ==========================================
+        # 3. V2V (Negociere Intersecție)
+        # ==========================================
+        # Dacă suntem departe de intersecție, nu ne stresăm încă
+        if distance_to_center > 200.0:
+            self.current_state = "CRUISE"
+>>>>>>> Stashed changes
             return
 
         my_ttc = self.calculate_ttc(intersection_x, intersection_y)
-        conflict_detected = False
-
+        
         for other_id, other_data in list(self.memory.items()):
+<<<<<<< Updated upstream
             # --- REPARAȚIE: Ignorăm mașinile care au trecut deja de centru ---
             ox, oy = other_data["position_x"], other_data["position_y"]
             oh = other_data.get("heading", "")
@@ -113,6 +160,40 @@ class VehicleAgent:
 
         if not conflict_detected:
             self._recover_speed()
+=======
+            if other_data.get("vehicle_type") == "Infrastructure":
+                continue
+            
+            # REPARAȚIA MAGICĂ: Nu negociem intersecția cu mașini de pe același sens!
+            if other_data.get("heading", "") == self.heading:
+                continue
+
+            ox, oy = other_data.get("position_x", 0), other_data.get("position_y", 0)
+            other_dist = math.sqrt((intersection_x - ox)**2 + (intersection_y - oy)**2)
+            other_speed = other_data.get("speed", 0)
+            other_ttc = other_dist / other_speed if other_speed > 0 else float("inf")
+
+            # Dacă există risc de coliziune (ajungem în același timp)
+            if abs(my_ttc - other_ttc) < 3.0:
+                if self.driving_style == "Cautious" and other_data.get("driving_style") == "Aggressive":
+                    self._brake("Defensiv: Cedez agresivului")
+                    return
+                if self.vehicle_type == "Normal" and other_data.get("vehicle_type") == "Ambulance":
+                    self._brake("Prioritate ambulanță")
+                    return
+                
+                # Doar ca ultimă soluție chemăm AI-ul Groq
+                self._negotiate_ai(other_id, other_data)
+                return
+
+        self.current_state = "CRUISE"
+        
+        # RECUPERAREA VITEZEI: Dacă viteza e mai mică decât cea dorită, accelerăm treptat
+        if hasattr(self, 'desired_speed') and self.speed < self.desired_speed:
+            self.speed = min(self.desired_speed, self.speed + 10.2)
+            # (Opțional) Poți lăsa acest print ca să vezi în consolă cum accelerează la loc
+            print(f"[{self.agent_id}]: Drum liber. Accelerez... Viteză: {self.speed:.2f}")
+>>>>>>> Stashed changes
 
     def _brake(self, reason):
         self.current_state = "BRAKING"
