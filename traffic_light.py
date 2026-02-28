@@ -1,6 +1,15 @@
 import math
 import threading
 import time
+import json
+import hashlib
+
+SECRET_KEY = "HACKATHON_AUTO_SECURE_2026"
+
+def sign_data(data):
+    clean_data = {k: v for k, v in data.items() if k != "signature"}
+    payload = json.dumps(clean_data, sort_keys=True) + SECRET_KEY
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
 
 class TrafficLightAgent:
     def __init__(self, broker, agent_id="Semafor_Centru"):
@@ -88,8 +97,12 @@ class TrafficLightAgent:
             "vehicle_type": "Infrastructure",
             "state_NS": self.state_NS,
             "state_EW": self.state_EW,
-            "time_to_change": round(time_to_change, 1), # <--- AICI ESTE MAGIA GLOSA
+            "time_to_change": round(time_to_change, 1),
             "position_x": 400,
             "position_y": 400,
+            "timestamp": time.time() # Adăugăm timpul
         }
+        
+        # Semnăm digital și starea semaforului!
+        data_package["signature"] = sign_data(data_package)
         self.broker.publish(self.agent_id, data_package)
