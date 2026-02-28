@@ -62,6 +62,17 @@ def run_simulation():
         "Masina_C": agent_c,
     }
 
+    # Agenți care au fost deja vizibili cel puțin o dată pe ecran
+    seen_on_screen = set()
+
+    def is_outside_screen(agent):
+        return (
+            agent.position_x < 0
+            or agent.position_x > 1500
+            or agent.position_y < 0
+            or agent.position_y > 800
+        )
+
     def background_task():
         dt = 0.05  # Recomandat 0.05 pentru stabilitate pe Mac
         while True:
@@ -85,7 +96,7 @@ def run_simulation():
     def background_task():
         dt = 0.05
         while True:
-            for a_id, agent in agenti.items():
+            for a_id, agent in list(agenti.items()):
                 # 1. V2X
                 traffic = broker.receive(a_id)
                 for o_id, o_data in traffic.items():
@@ -97,6 +108,18 @@ def run_simulation():
                 agent.decide_action(target_int_x, 400)
 
                 agent.update_position(dt)
+
+                # Marcăm agentul când intră în cadru (prima apariție)
+                if not is_outside_screen(agent):
+                    seen_on_screen.add(a_id)
+
+                # Îl ștergem doar dacă a fost văzut deja și apoi a ieșit
+                if a_id in seen_on_screen and is_outside_screen(agent):
+                    with broker.lock:
+                        broker.vehicles_status.pop(a_id, None)
+                    del agenti[a_id]
+                    seen_on_screen.discard(a_id)
+                    continue
 
                 # 3. Publicăm
                 broker.publish(a_id, agent.get_emergency_status())

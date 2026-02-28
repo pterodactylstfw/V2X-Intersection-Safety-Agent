@@ -45,6 +45,16 @@ class SimulationUI:
 
         self.rotation_map = {"EAST": 0, "NORTH": 90, "WEST": 180, "SOUTH": 270}
 
+    def is_outside_bounds(self, v_data):
+        """Returnează True dacă vehiculul a ieșit din cadru pe baza position_x/position_y."""
+        if v_data.get("vehicle_type") == "Infrastructure":
+            return False
+
+        x = v_data.get("position_x", 0)
+        y = v_data.get("position_y", 0)
+
+        return x < 0 or x > SCREEN_WIDTH or y < 0 or y > SCREEN_HEIGHT
+
     def draw_dashed_line(self, start_pos, end_pos, vertical=False):
         """Funcție pentru a desena linia punctată de separare a benzilor."""
         dist = 20
@@ -177,6 +187,15 @@ class SimulationUI:
 
             # --- CITIM DATELE LIVE DIN BROKER ---
             with broker.lock:
+                vehicles_to_remove = [
+                    v_id
+                    for v_id, v_data in broker.vehicles_status.items()
+                    if self.is_outside_bounds(v_data)
+                ]
+
+                for v_id in vehicles_to_remove:
+                    del broker.vehicles_status[v_id]
+
                 # Facem o copie a statusului mașinilor din rețea
                 current_traffic = broker.vehicles_status.copy()
 
