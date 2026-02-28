@@ -9,31 +9,59 @@ from traffic_light import IntelligentTrafficLight
 def run_simulation():
     # 1. Infrastructura
     broker = V2XBroker()
-
     semafor = IntelligentTrafficLight(broker)
     semafor.start()
-
     ui = SimulationUI()
 
-    # 2. Agenții (REPARAT: am adăugat target_destination și desired_speed)
-    # Masina_A pleacă de la (0, 400) spre (800, 400) cu viteza 3.5
-    # Folosește viteze între 60 și 100 (pixeli pe secundă)
-    # În main.py, în funcția run_simulation():
-    # Masina_A: pleacă de la 0, vrea să ajungă la 800 (pe axa X), viteză 70
-    # 2. Agenții: Viteze de 70-100 px/s pentru a se mișca natural
-    # 2. Agenții: Viteze de 70-100 px/s pentru a se mișca natural
-    # Folosește viteze între 60 și 90 pixeli pe secundă
-    agent_a = VehicleAgent("Masina_A", 0, 400, [800, 400], 70.0, heading="EAST")
+    # 2. Agenții (Toți cei 4 conform regulilor de circulație RO)
+
+    # Masina_A: Pleacă de la VEST(0) spre EST(1500), Banda de JOS (420)
+    agent_a = VehicleAgent("Masina_A", 0, 420, [1500, 420], 80.0, heading="EAST")
+
+    # Ambulanta_B: Pleacă de la NORD(0) spre SUD(800), Intersecția 1, Banda STÂNGA (380)
     agent_b = VehicleAgent(
         "Ambulanta_B",
-        400,
+        380,
         0,
-        [400, 800],
-        85.0,
+        [380, 800],
+        100.0,
         vehicle_type="Ambulance",
         heading="SOUTH",
     )
-    agenti = {"Masina_A": agent_a, "Ambulanta_B": agent_b}
+
+    # Masina_C: Pleacă de la SUD(800) spre NORD(0), Intersecția 2, Banda DREAPTA (1120)
+    agent_c = VehicleAgent("Masina_C", 1120, 800, [1120, 0], 75.0, heading="NORTH")
+
+    # Masina_D: Pleacă de la EST(1500) spre VEST(0), Banda de SUS (380)
+    agent_d = VehicleAgent("Masina_D", 1500, 380, [0, 380], 85.0, heading="WEST")
+
+    # Punem toți agenții în dicționar
+    agenti = {
+        "Masina_A": agent_a,
+        "Ambulanta_B": agent_b,
+        "Masina_C": agent_c,
+        "Masina_D": agent_d,
+    }
+
+    def background_task():
+        dt = 0.05  # Recomandat 0.05 pentru stabilitate pe Mac
+        while True:
+            for a_id, agent in agenti.items():
+                # 1. Comunicare V2X
+                traffic = broker.receive(a_id)
+                for o_id, o_data in traffic.items():
+                    agent.receive_v2x_message(o_data)
+
+                # 2. Logica de decizie: Mașina alege cea mai apropiată intersecție
+                # Avem Intersecția 1 la x=400 și Intersecția 2 la x=1100
+                target_int_x = 400 if agent.position_x < 750 else 1100
+                agent.decide_action(target_int_x, 400)
+
+                agent.update_position(dt)
+
+                # 3. Publicăm starea
+                broker.publish(a_id, agent.get_emergency_status())
+            time.sleep(dt)
 
     def background_task():
         dt = 0.02
