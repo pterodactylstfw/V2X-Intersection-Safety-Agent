@@ -21,7 +21,7 @@ COLOR_AMBULANCE_CAR = (204, 0, 0)
 COLOR_RED = (255, 0, 0)
 COLOR_GREEN = (0, 255, 0)
 COLOR_YELLOW = (255, 165, 0)
-
+COLOR_GRASS = (69, 108, 46)
 
 class SimulationUI:
     def __init__(self, title="V2X Stylized Grid Simulator"):
@@ -156,6 +156,10 @@ class SimulationUI:
     def draw_environment(self):
         """Desenează harta clasică, curată, exact ca într-o schiță."""
         self.screen.fill(COLOR_BACKGROUND)
+        # iarba 
+        pygame.draw.polygon(self.screen, COLOR_GRASS, [(1000, 0), (SCREEN_WIDTH, 0), (SCREEN_WIDTH, SCREEN_HEIGHT), (600, SCREEN_HEIGHT)], width=0)
+        pygame.draw.polygon(self.screen, COLOR_BACKGROUND, [(0, 100), (0, SCREEN_HEIGHT), (1140, 800), (1140, 675)], width=0)
+
 
         # ====================================================
         # 1. STRATUL ASFALT: Desenăm fiecare bandă individual
@@ -178,7 +182,6 @@ class SimulationUI:
         self.draw_building_along_road(nodes["I1_SE"], nodes["I2_SW"], width=50, offset=40, node_offset=100)
         self.draw_building_along_road(nodes["I1_NE"], nodes["I3_SE"], width=50, offset=40, node_offset=100)
         self.draw_building_along_road(nodes["I3_SE"], nodes["I2_NW"], width=40, offset=40, node_offset=250)
-
 
         # pygame.draw.polygon(self.screen, COLOR_WALL, [(270, 350), (270, 370), (370, 370), (370, 350)], width=0)
 
