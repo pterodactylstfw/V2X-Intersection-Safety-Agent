@@ -27,6 +27,7 @@ def run_simulation():
         100.0,
         vehicle_type="Ambulance",
         heading="SOUTH",
+        driving_style="Aggressive",
     )
 
     # Masina_C: Pleacă de la SUD(800) spre NORD(0), Intersecția 2, Banda DREAPTA (1120)
@@ -64,23 +65,46 @@ def run_simulation():
             time.sleep(dt)
 
     def background_task():
-        dt = 0.02
+        dt = 0.05  # Recomandat 0.05 pentru stabilitate pe Mac
         while True:
             for a_id, agent in agenti.items():
-                # 1. Comunicare V2X: Agentul preia datele din rețea
+                # 1. Comunicare V2X
                 traffic = broker.receive(a_id)
                 for o_id, o_data in traffic.items():
                     agent.receive_v2x_message(o_data)
 
-                # 2. Agentul decide și se mișcă (NU mai folosim coordonate din JSON)
-                agent.decide_action(400, 400)
+                # 2. Logica de decizie: Mașina alege cea mai apropiată intersecție
+                # Avem Intersecția 1 la x=400 și Intersecția 2 la x=1100
+                target_int_x = 400 if agent.position_x < 750 else 1100
+                agent.decide_action(target_int_x, 400)
+
                 agent.update_position(dt)
 
-                # 3. Publicăm starea calculată de AI
+                # 3. Publicăm starea
                 broker.publish(a_id, agent.get_emergency_status())
             time.sleep(dt)
 
-    # Pornim thread-ul de simulare în fundal
+    def background_task():
+        dt = 0.05
+        while True:
+            for a_id, agent in agenti.items():
+                # 1. V2X
+                traffic = broker.receive(a_id)
+                for o_id, o_data in traffic.items():
+                    agent.receive_v2x_message(o_data)
+
+                # 2. Alegem intersecția cea mai apropiată (ZONARE)
+                # Intersecția 1 e la x=400, Intersecția 2 la x=1100
+                target_int_x = 400 if agent.position_x < 750 else 1100
+                agent.decide_action(target_int_x, 400)
+
+                agent.update_position(dt)
+
+                # 3. Publicăm
+                broker.publish(a_id, agent.get_emergency_status())
+            time.sleep(dt)
+
+    # PORNEȘTE DOAR ACEST THREAD (asigură-te că nu ai altul mai jos în main.py)
     threading.Thread(target=background_task, daemon=True).start()
 
     # UI-ul afișează datele din broker în timp real
