@@ -4,6 +4,8 @@ import time
 import threading
 import json
 import hashlib
+import requests
+
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
@@ -617,6 +619,35 @@ class VehicleAgent:
 
         self.position_x = self.base_x + math.cos(perp_angle) * self.current_lane_offset
         self.position_y = self.base_y + math.sin(perp_angle) * self.current_lane_offset
+
+        # ==========================================
+        # CLOUD TELEMETRY: Trimitem datele spre Docker (Grafana)
+        # ==========================================
+        # Trimitem date o dată la ~1 secundă (ca să nu facem spam pe rețea)
+        if hasattr(self, 'last_telemetry_time'):
+            if time.time() - self.last_telemetry_time < 1.0:
+                return
+        self.last_telemetry_time = time.time()
+
+        # Formatăm datele pentru baza de date InfluxDB
+        is_braking = 1 if self.current_state == "BRAKING" else 0
+        data_string = f"vehicle_stats,agent_id={self.agent_id} speed={self.speed},braking={is_braking}"
+        
+        headers = {"Authorization": "Token super-secret-auth-token"}
+        
+        # Trimitem pe un thread separat ca să nu agățăm interfața grafică Pygame
+        def send_to_cloud():
+            try:
+                requests.post(
+                    "http://localhost:8086/api/v2/write?org=v2x_org&bucket=telemetry&precision=s", 
+                    headers=headers, 
+                    data=data_string, 
+                    timeout=0.5
+                )
+            except:
+                pass # Dacă Docker-ul e oprit, ignorăm eroarea și mașina merge mai departe
+
+        threading.Thread(target=send_to_cloud, daemon=True).start()
 
     def _update_heading_and_turn(self):
         # CALCUL PERFECT AL INTENȚIEI DE VIRAJ:
