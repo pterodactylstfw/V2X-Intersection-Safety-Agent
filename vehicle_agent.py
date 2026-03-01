@@ -226,27 +226,28 @@ class VehicleAgent:
                 )
 
                 is_in_front = False
+                # REPARAT: Marjă anti-ghosting de 15px ca să nu sară prin ea la 85 km/h!
                 if (
                     self.heading == "EAST"
-                    and ox > self.position_x
+                    and ox > self.position_x - 15
                     and abs(oy - self.position_y) < 20
                 ):
                     is_in_front = True
                 elif (
                     self.heading == "WEST"
-                    and ox < self.position_x
+                    and ox < self.position_x + 15
                     and abs(oy - self.position_y) < 20
                 ):
                     is_in_front = True
                 elif (
                     self.heading == "SOUTH"
-                    and oy > self.position_y
+                    and oy > self.position_y - 15
                     and abs(ox - self.position_x) < 20
                 ):
                     is_in_front = True
                 elif (
                     self.heading == "NORTH"
-                    and oy < self.position_y
+                    and oy < self.position_y + 15
                     and abs(ox - self.position_x) < 20
                 ):
                     is_in_front = True
@@ -269,15 +270,43 @@ class VehicleAgent:
                     # 2. WAZE BYPASS: Dacă mașina din față e lovită, trage stânga pe contrasens!
                     if other_data.get("is_crashed", False) and dist_to_front < 160.0:
                         obstacle_in_front = True
-                        self.target_lane_offset = 45.0  # 45px deviație
-                        continue  # Sari peste frânare ca să poată avansa!
+                        self.target_lane_offset = (
+                            80.0  # REPARAT: 80px deviație pentru o bandă întreagă
+                        )
+                        continue
 
                     # 3. ACC: Frânarea normală pentru trafic
-                    safe_distance = 55.0 if self.driving_style == "Aggressive" else 90.0
+                    safe_distance = 150.0  # O lăsăm mare ca să o vadă din timp
 
                     if dist_to_front < safe_distance:
-                        self._brake(f"ACC: Frânez pt {other_id}")
-                        return
+                        viteza_lider = other_data.get("speed", 0.0)
+
+                        if self.driving_style == "Aggressive":
+                            # AGRESIVUL ignoră complet liderul până la 60px (vine lansat)
+                            if dist_to_front > 60.0:
+                                return
+
+                            # La sub 60px pune frână brutală ca să stea în bară
+                            if dist_to_front < 47.0:  # Limita de coliziune
+                                self.speed = max(0.0, viteza_lider - 5.0)
+                            else:
+                                if self.speed > viteza_lider:
+                                    self.speed = max(
+                                        viteza_lider, self.speed - 15.0
+                                    )  # Frână F1!
+                                else:
+                                    self.speed = viteza_lider
+                            self.current_state = "BRAKING"
+                            return
+                        else:
+                            # NORMALUL frânează treptat și calm
+                            if dist_to_front < 60.0:
+                                self.speed = max(0.0, viteza_lider - 2.0)
+                            else:
+                                if self.speed > viteza_lider:
+                                    self.speed = max(viteza_lider, self.speed - 3.0)
+                            self.current_state = "BRAKING"
+                            return
 
         # Dacă a trecut de obstacol sau nu e niciunul, revine pe banda ei
         if not obstacle_in_front:
@@ -356,9 +385,8 @@ class VehicleAgent:
         is_light_here = False
         has_green_light = False
 
-        if semafor_data:
-            if abs(int_x - 400) < 100 and abs(int_y - 650) < 100:
-                is_light_here = True
+        if semafor_data and int_x == 400 and int_y == 650 and dist_to_int < 150.0:
+            culoare_axa_mea = "GREEN"
 
         if is_light_here and not in_intersection:
             culoare_axa_mea = "GREEN"
@@ -369,23 +397,29 @@ class VehicleAgent:
             time_to_change = semafor_data.get("time_to_change", 5.0)
 
             if culoare_axa_mea == "RED":
-                # NOU: Șoferul agresiv frânează mult mai târziu la semafor!
-                brake_dist = 80.0 if self.driving_style == "Aggressive" else 120.0
-                if dist_to_int < brake_dist:
-                    self._brake("V2I: Opresc la Semafor ROȘU")
-                    return
-                elif dist_to_int < 400.0:
-                    cadre_ramase = time_to_change * 20
-                    if cadre_ramase > 0:
-                        viteza_optima = min(
-                            self.desired_speed, max(1.0, dist_to_int / cadre_ramase)
-                        )
-                        # GLOSA Perfect: Ajustează viteza lin ca să ajungă când se face verde
-                        if self.speed > viteza_optima:
-                            self.speed = max(viteza_optima, self.speed - 0.2)
-                        elif self.speed < viteza_optima:
-                            self.speed = min(viteza_optima, self.speed + 1.0)
-                        return  # OBLIGATORIU: Returnăm ca să nu accelereze din greșeală mai jos
+                # NOU: Șoferul agresiv IGNORĂ ajustarea fină (GLOSA) și merge glonț până la 80px de semafor!
+                if self.driving_style == "Aggressive":
+                    if dist_to_int < 80.0:
+                        self._brake("V2I: Opresc la Semafor ROȘU (Agresiv)")
+                        return
+                    # Nu face return! Își continuă accelerația ignorând faptul că e Roșu în depărtare.
+                else:
+                    # Mașinile normale frânează la 120px...
+                    if dist_to_int < 120.0:
+                        self._brake("V2I: Opresc la Semafor ROȘU")
+                        return
+                    # ...și își optimizează viteza de la 400px (GLOSA)
+                    elif dist_to_int < 400.0:
+                        cadre_ramase = time_to_change * 20
+                        if cadre_ramase > 0:
+                            viteza_optima = min(
+                                self.desired_speed, max(1.0, dist_to_int / cadre_ramase)
+                            )
+                            if self.speed > viteza_optima:
+                                self.speed = max(viteza_optima, self.speed - 0.2)
+                            elif self.speed < viteza_optima:
+                                self.speed = min(viteza_optima, self.speed + 1.0)
+                            return
 
             elif culoare_axa_mea == "YELLOW":
                 # NOU: Șoferul agresiv ignoră total semaforul Galben și trece!
@@ -407,6 +441,65 @@ class VehicleAgent:
             self.turn_intent = "PRIORITY"
             self._recover_speed()
             return
+
+        # ==========================================================
+        # IERARHIA 2.5: REFLEX PRIORITATE DE DREAPTA (Elimină bâlbâiala)
+        # ==========================================================
+        if dist_to_int < 130.0:
+            for other_id, other_data in list(self.memory.items()):
+                # Ignorăm semafoarele în această buclă
+                if other_data.get("vehicle_type") == "Infrastructure":
+                    continue
+
+                ox = other_data.get("position_x", 0)
+                oy = other_data.get("position_y", 0)
+                other_dist_to_int = math.sqrt((ox - int_x) ** 2 + (oy - int_y) ** 2)
+
+                # Dacă și cealaltă mașină se află la sub 130px de ACEEAȘI intersecție ca tine
+                if other_dist_to_int < 130.0:
+                    oh = other_data.get("heading", "")
+
+                    # Verificăm matematic dacă el vine din dreapta ta
+                    vine_din_dreapta = False
+                    if self.heading == "NORTH" and oh == "WEST":
+                        vine_din_dreapta = True
+                    elif self.heading == "SOUTH" and oh == "EAST":
+                        vine_din_dreapta = True
+                    elif self.heading == "EAST" and oh == "NORTH":
+                        vine_din_dreapta = True
+                    elif self.heading == "WEST" and oh == "SOUTH":
+                        vine_din_dreapta = True
+
+                    # Ambulanțele au prioritate absolută
+                    if (
+                        other_data.get("vehicle_type") == "Ambulance"
+                        and self.vehicle_type != "Ambulance"
+                    ):
+                        vine_din_dreapta = True
+
+                    if vine_din_dreapta:
+                        # FOARTE IMPORTANT: Verificăm dacă celălalt a traversat DEJA centrul intersecției
+                        # Dacă a trecut, nu mai e pericol, deci nu mai stăm opriți!
+                        trecut_de_centru = False
+                        if oh == "WEST" and ox < int_x - 20:
+                            trecut_de_centru = True
+                        elif oh == "EAST" and ox > int_x + 20:
+                            trecut_de_centru = True
+                        elif oh == "NORTH" and oy < int_y - 20:
+                            trecut_de_centru = True
+                        elif oh == "SOUTH" and oy > int_y + 20:
+                            trecut_de_centru = True
+
+                        if not trecut_de_centru:
+                            # Cedează trecerea fluid: frânăm progresiv până la linia de Stop imaginară (45px)
+                            if dist_to_int > 45.0:
+                                self.speed = max(0.0, self.speed - 3.5)
+                            else:
+                                self.speed = 0.0  # Oprește complet și așteaptă
+
+                            self._brake(f"Prioritate de dreapta pentru {other_id}")
+                            return  # Blocăm accelerația până trece mașina!
+        # ==========================================================
 
         # IERARHIA 3A: ZIPPER MERGE
         if abs(int_x - 770) < 20 and abs(int_y - 455) < 20:
@@ -609,14 +702,14 @@ class VehicleAgent:
         else:
             self.heading = "WEST"
 
-        # 2. TRANZIȚIA LINĂ PENTRU DEPĂȘIRE (Glisarea pe contrasens)
-        # Mașina virează ușor stânga/dreapta spre target_lane_offset
+        viteză_virare = 55.0  # REPARAT: Trage de volan mai repede pentru a face depășirea largă în timp util
+
         if self.current_lane_offset < self.target_lane_offset:
-            self.current_lane_offset += 30.0 * dt
+            self.current_lane_offset += viteză_virare * dt
             if self.current_lane_offset > self.target_lane_offset:
                 self.current_lane_offset = self.target_lane_offset
         elif self.current_lane_offset > self.target_lane_offset:
-            self.current_lane_offset -= 30.0 * dt
+            self.current_lane_offset -= viteză_virare * dt
             if self.current_lane_offset < self.target_lane_offset:
                 self.current_lane_offset = self.target_lane_offset
 

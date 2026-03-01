@@ -156,18 +156,21 @@ def run_simulation():
         agent_id="Masina_Lider",
         start_node="W_START",
         target_node="E_END",
-        desired_speed=34.0,  # Merge încet
+        desired_speed=44.0,  # Merge încet
     )
 
     agent_urmaritor = VehicleAgent(
-        agent_id="Masina_Urmaritor",
+        agent_id="Masina_",
         start_node="W_START",
         target_node="E_END",
         desired_speed=85.0,  # Vine glonț din spate
         driving_style="Aggressive",
     )
-    # TRUC: O mutăm manual 150px mai în spate ca să vedem cum o ajunge din urmă și frânează
-    agent_urmaritor.position_x -= 150
+
+    # TRUC: O mutăm manual 350px mai în spate ca să vedem cum o ajunge din urmă și frânează
+    # REPARAT: Trebuie să mutăm și "șina invizibilă" (base_x) odată cu poziția reală!
+    agent_urmaritor.position_x -= 350
+    agent_urmaritor.base_x -= 350
 
     # --- SCENARIUL 2: Prioritate de Dreapta ---
     # Vine de jos spre sus (SUD -> NORD). Se va întâlni cu Liderul la I1.

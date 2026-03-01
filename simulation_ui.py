@@ -128,12 +128,12 @@ class SimulationUI:
         self.spawn_car_button_rect = pygame.Rect(200, 80, 160, 40)  # Poziție nouă
 
         self.DEER_DECOR_POINTS = [
-            (1270, 590),
-            (1330, 565),
-            (1320, 590),
-            (1290, 560),
-            (1400, 730),
-            (1390, 760),
+            (1270, 590, "FX"),
+            (1330, 565, "N"),
+            (1320, 590, "N"),
+            (1290, 560, "FX"),
+            (1400, 720, "FX"),
+            (1390, 760, "N"),
         ]
 
         self.COLOR_RED_OFF = (60, 0, 0)
@@ -420,10 +420,14 @@ class SimulationUI:
 
         # Desenare căprioare decorative
         if self.use_images and self.img_deer is not None:
-            deer_scaled = pygame.transform.scale(self.img_deer, (35, 35))
-            for x, y in self.DEER_DECOR_POINTS:
-                rect = deer_scaled.get_rect(center=(int(x), int(y)))
-                self.screen.blit(deer_scaled, rect)
+            base = pygame.transform.scale(self.img_deer, (35, 35))
+            deer_n = base
+            deer_fx = pygame.transform.flip(base, True, False)  # stânga-dreapta (FX)
+
+            for x, y, v in self.DEER_DECOR_POINTS:
+                img = deer_n if v == "N" else deer_fx
+                rect = img.get_rect(center=(int(x), int(y)))
+                self.screen.blit(img, rect)
         else:
             for x, y in getattr(self, "DEER_DECOR_POINTS", []):
                 pygame.draw.circle(self.screen, (139, 69, 19), (int(x), int(y)), 8)
