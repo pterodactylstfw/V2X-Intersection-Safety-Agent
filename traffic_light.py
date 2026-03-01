@@ -6,10 +6,12 @@ import hashlib
 
 SECRET_KEY = "HACKATHON_AUTO_SECURE_2026"
 
+
 def sign_data(data):
     clean_data = {k: v for k, v in data.items() if k != "signature"}
     payload = json.dumps(clean_data, sort_keys=True) + SECRET_KEY
-    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
 
 class TrafficLightAgent:
     def __init__(self, broker, agent_id="Semafor_Centru"):
@@ -27,13 +29,15 @@ class TrafficLightAgent:
         while self.running:
             # 1. VERIFICARE BUTON AVARIE
             if not getattr(self.broker, "infrastructure_active", True):
-                self._publish_state("YELLOW_BLINKING", "YELLOW_BLINKING", time_to_change=0.0)
+                self._publish_state(
+                    "YELLOW_BLINKING", "YELLOW_BLINKING", time_to_change=0.0
+                )
                 time.sleep(0.5)  # Rulăm frecvent pentru a detecta repornirea
                 continue
 
             traffic_data = self.broker.receive(self.agent_id)
             emergency_heading = None
-            
+
             for v_id, v_data in traffic_data.items():
                 if v_data.get("vehicle_type") == "Ambulance":  # Dacă e ambulanță
                     dist_to_center = math.sqrt(
@@ -47,7 +51,9 @@ class TrafficLightAgent:
             # URGENȚĂ: Ambulanța forțează culoarea
             if emergency_heading:
                 if emergency_heading in ["NORTH", "SOUTH"]:
-                    self._publish_state("GREEN", "RED", time_to_change=99.0)  # 99.0 = ține verde indefinit
+                    self._publish_state(
+                        "GREEN", "RED", time_to_change=99.0
+                    )  # 99.0 = ține verde indefinit
                 else:
                     self._publish_state("RED", "GREEN", time_to_change=99.0)
                 time.sleep(0.1)
@@ -55,7 +61,7 @@ class TrafficLightAgent:
 
             # 2. CICLUL NORMAL (Am integrat GLOSA aici)
             # Trimitem timpul rămas direct din funcția de așteptare!
-            
+
             # NS Verde, EW Roșu (5 secunde)
             if not self._wait_interruptible(5.0, "GREEN", "RED"):
                 continue
@@ -78,13 +84,13 @@ class TrafficLightAgent:
         for step in range(steps):
             if not getattr(self.broker, "infrastructure_active", True):
                 return False
-            
+
             # CALCULĂM TIMPUL RĂMAS: total pași - pașii făcuți
             time_to_change = (steps - step) * 0.1
-            
+
             # Publicăm starea la fiecare 0.1 secunde, cu tot cu timpul rămas!
             self._publish_state(state_ns, state_ew, time_to_change)
-            
+
             time.sleep(0.1)
         return True
 
@@ -100,9 +106,9 @@ class TrafficLightAgent:
             "time_to_change": round(time_to_change, 1),
             "position_x": 400,
             "position_y": 400,
-            "timestamp": time.time() # Adăugăm timpul
+            "timestamp": time.time(),  # Adăugăm timpul
         }
-        
+
         # Semnăm digital și starea semaforului!
         data_package["signature"] = sign_data(data_package)
         self.broker.publish(self.agent_id, data_package)

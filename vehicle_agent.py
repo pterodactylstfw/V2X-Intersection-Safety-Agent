@@ -166,41 +166,27 @@ class VehicleAgent:
         self.memory[sender_id] = message
 
     def decide_action(self, int_x, int_y, ai_global_enabled=True):
-        self.target_int = (int_x, int_y)
-
-        # DACĂ MAȘINA ESTE LOVITĂ, NU MAI FACE NIMIC
-        if getattr(self, "is_crashed", False):
-            self.speed = 0
-            self.current_state = "CRASHED"
-            return
-
-        # --- NOU: LOGICA DE DEZACTIVARE AI ---
-        if not ai_global_enabled:
-            # Dacă AI e OFF, mașina ignoră tot (ACC, Semafor, V2V)
-            # Pur și simplu merge cu viteza ei setată (haos)
-            self._recover_speed()
-            self.last_ai_decision = None
-            self.current_state = "CRUISE"  # Resetăm starea de frânare
-            return
-
-    def calculate_ttc(self, target_x, target_y):
-        if self.speed < 1.0:
-            return 999
-        dist = math.sqrt(
-            (target_x - self.position_x) ** 2 + (target_y - self.position_y) ** 2
-        )
-        return dist / self.speed
-
-    def decide_action(self, int_x, int_y):
         self.target_int = (int_x, int_y)  # O salvăm ca să o dăm mai departe în V2X
 
+        # 1. DACĂ E DEJA LOVITĂ, RĂMÂNE PE LOC (Mort)
         if self.is_crashed:
             self.speed = 0
             self.current_state = "CRASHED"
             return
+
+        # 2. DACĂ SISTEMUL AI (V2X) ESTE OPRIT DIN BUTON -> MODUL "ȘOFER NEATENT"
+        if not ai_global_enabled:
+            # Nu vede animale, nu vede semafoare, nu cedează trecerea.
+            # Pur și simplu merge înainte cu viteza maximă!
+            self._recover_speed()
+            self.last_ai_decision = None
+            return
+
         # ==========================================
-        # 0. URGENȚĂ ABSOLUTĂ: Evitare Animale (TREBUIE SĂ FIE PRIMA!)
+        # DE AICI ÎN JOS ESTE LOGICA INTELIGENTĂ (CÂND AI ESTE ON)
         # ==========================================
+
+        # 0. URGENȚĂ ABSOLUTĂ: Evitare Animale
         for other_id, other_data in list(self.memory.items()):
             if other_data.get("vehicle_type") == "Animal":
                 ax = other_data.get("position_x", 0)
@@ -210,7 +196,6 @@ class VehicleAgent:
                     (ax - self.position_x) ** 2 + (ay - self.position_y) ** 2
                 )
 
-                # O vede de la 250px distanță (are timp să frâneze)
                 if dist_to_animal < 250.0:
                     if self.heading == "EAST" and ax > self.position_x:
                         self._brake("ANIMAL PE DRUM!")
@@ -219,9 +204,7 @@ class VehicleAgent:
                         self._brake("ANIMAL PE DRUM!")
                         return
 
-        # ==========================================
         # 0.5 ACC (Evitare Coliziuni Frontale)
-        # ==========================================
         for other_id, other_data in list(self.memory.items()):
             if other_data.get("vehicle_type") == "Infrastructure":
                 continue
@@ -266,9 +249,7 @@ class VehicleAgent:
                         self._brake(f"ACC: Frânez pt {other_id}")
                         return
 
-        # ==========================================
         # 1. VERIFICARE: Am trecut de intersecție?
-        # ==========================================
         is_past = False
         if self.heading == "EAST" and self.position_x > int_x + 50:
             is_past = True
@@ -289,20 +270,16 @@ class VehicleAgent:
         )
         in_intersection = dist_to_int <= 60.0
 
-        # ==========================================
         # IERARHIA 1: PRIORITATE AMBULANȚĂ
-        # ==========================================
         if self.vehicle_type != "Ambulance":
             for other_id, other_data in list(self.memory.items()):
                 if other_data.get("vehicle_type") == "Ambulance":
-
-                    # FILTRU V2X PERFECT: Se duce Ambulanța spre aceeași intersecție ca mine?
                     amb_int = other_data.get("target_int", (0, 0))
                     if (
                         math.sqrt((int_x - amb_int[0]) ** 2 + (int_y - amb_int[1]) ** 2)
                         > 50.0
                     ):
-                        continue  # E pe altă stradă, o ignor!
+                        continue
 
                     ox, oy = other_data.get("position_x", 0), other_data.get(
                         "position_y", 0
@@ -340,9 +317,7 @@ class VehicleAgent:
             self._recover_speed()
             return
 
-        # ==========================================
         # IERARHIA 2: SEMAFOR (V2I)
-        # ==========================================
         semafor_data = self.memory.get("Semafor_Centru")
         is_light_here = False
         has_green_light = False
@@ -357,7 +332,6 @@ class VehicleAgent:
                 culoare_axa_mea = semafor_data.get("state_NS", "GREEN")
             elif self.heading in ["EAST", "WEST"]:
                 culoare_axa_mea = semafor_data.get("state_EW", "GREEN")
-
             time_to_change = semafor_data.get("time_to_change", 5.0)
 
             if culoare_axa_mea == "RED":
@@ -388,15 +362,12 @@ class VehicleAgent:
             self._recover_speed()
             return
 
-        # ==========================================
-        # IERARHIA 3A: ZIPPER MERGE (Punct de Fuziune)
-        # ==========================================
+        # IERARHIA 3A: ZIPPER MERGE
         if abs(int_x - 770) < 20 and abs(int_y - 455) < 20:
             conflict_merge = False
             for other_id, other_data in list(self.memory.items()):
                 if other_data.get("vehicle_type") == "Infrastructure":
                     continue
-
                 other_int = other_data.get("target_int", (0, 0))
                 if (
                     math.sqrt((int_x - other_int[0]) ** 2 + (int_y - other_int[1]) ** 2)
@@ -417,29 +388,23 @@ class VehicleAgent:
                     elif abs(dist_to_int - o_dist) <= 15.0 and self.agent_id > other_id:
                         self._brake("Zipper: Tie-breaker YIELD")
                         return
-
                     self.turn_intent = "PRIORITY"
-
             if not conflict_merge:
                 self._recover_speed()
             return
 
-        # ==========================================
         # IERARHIA 3B: PRIORITATE DE DREAPTA
-        # ==========================================
         if dist_to_int > 350.0:
             self._recover_speed()
             return
 
         conflict_detected = False
-
         for other_id, other_data in list(self.memory.items()):
             if other_data.get("vehicle_type") == "Infrastructure":
                 continue
             if other_data.get("heading") == self.heading:
                 continue
 
-            # FILTRU V2X PERFECT
             other_int = other_data.get("target_int", (0, 0))
             if (
                 math.sqrt((int_x - other_int[0]) ** 2 + (int_y - other_int[1]) ** 2)
@@ -450,7 +415,6 @@ class VehicleAgent:
             ox, oy = other_data.get("position_x", 0), other_data.get("position_y", 0)
             oh = other_data.get("heading", "")
 
-            # Ignorăm mașinile care merg perfect paralel
             if (self.heading in ["NORTH", "SOUTH"] and oh in ["NORTH", "SOUTH"]) or (
                 self.heading in ["EAST", "WEST"] and oh in ["EAST", "WEST"]
             ):
@@ -475,10 +439,8 @@ class VehicleAgent:
                 my_ttc = dist_to_int / max(self.speed, 1.0)
                 o_ttc = o_dist / max(other_data.get("speed", 0), 1.0)
 
-                # Dăm prioritate DOAR dacă ajungem în intersecție aproximativ în același timp
                 if abs(my_ttc - o_ttc) < 3.5 or o_dist < 80.0:
                     conflict_detected = True
-
                     yields_to = {
                         "EAST": "NORTH",
                         "NORTH": "WEST",
@@ -487,22 +449,14 @@ class VehicleAgent:
                     }
 
                     if yields_to.get(self.heading) == oh:
-                        # ==============================================================
-                        # FIX MAJOR: O mașină care virează la dreapta NU taie calea mașinii
-                        # care vine din dreapta ei (intră direct pe bandă). Deci își vede de drum!
-                        # Acest fix rezolvă perfect blocajul mașinilor de pe diagonală!
-                        # ==============================================================
                         if self.turn_intent == "TURN_RIGHT":
                             continue
-
                         if dist_to_int > 90.0:
                             self.speed = max(1.5, self.speed - 0.5)
                             self.current_state = "BRAKING"
                             return
                         elif 50.0 <= dist_to_int <= 90.0:
-                            self._brake(
-                                f"Cedez trecerea (Regula Dreapta pt {other_id})"
-                            )
+                            self._brake(f"Cedez trecerea pt {other_id}")
                             return
                     elif yields_to.get(oh) == self.heading:
                         self.turn_intent = "PRIORITY"

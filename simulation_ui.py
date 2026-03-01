@@ -498,6 +498,15 @@ class SimulationUI:
         x, y = v_data.get("position_x", 0), v_data.get("position_y", 0)
         v_type = v_data.get("vehicle_type", "Normal")
 
+        # NOU: Verificăm dacă mașina este "Crashed" (lovită)
+        is_crashed = v_data.get("is_crashed", False)
+
+        # DESENEAZĂ EFECTUL DE EXPLOZIE DACĂ E CRASHED
+        if is_crashed:
+            # Cerc portocaliu-roșiatic sub mașină pentru a arăta accidentul
+            pygame.draw.circle(self.screen, (255, 69, 0), (int(x), int(y)), 25)
+            pygame.draw.circle(self.screen, (200, 0, 0), (int(x), int(y)), 15)
+
         # ==========================================
         # NOU: Desenăm Căprioara (Imaginea)
         # ==========================================
@@ -514,8 +523,7 @@ class SimulationUI:
             # Scriem numele "Căprioară" deasupra ei
             animal_text = self.small_font.render(v_id, True, (255, 150, 150))
             self.screen.blit(animal_text, (int(x) - 25, int(y) - 30))
-            return  # Dăm 'return' aici ca să nu încerce să mai deseneze o mașină peste ea!
-        # ==========================================
+            return
 
         exact_angle = v_data.get("visual_angle", 0.0)
         intent = v_data.get("intent", "IDLE")
@@ -558,20 +566,34 @@ class SimulationUI:
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
+                    pygame.quit()
+                    sys.exit(0)
+
+                # REPARAT: Închidere și pe butonul ESCAPE de pe tastatură
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    running = False
+                    pygame.quit()
+                    sys.exit(0)
+
                 if event.type == pygame.MOUSEBUTTONDOWN:
+                    # 1. Click pe butonul SISTEM
                     if self.button_rect.collidepoint(event.pos):
                         self.system_on = not self.system_on
                         if hasattr(broker, "infrastructure_active"):
                             broker.infrastructure_active = self.system_on
+
+                    # 2. Click pe butonul SPAWN AI CAR
                     elif self.spawn_car_button_rect.collidepoint(event.pos):
                         if hasattr(broker, "trigger_spawn_car"):
                             broker.trigger_spawn_car()
 
-                    # NOU: Detecție click pentru butonul căprioarei
-                    if self.animal_button_rect.collidepoint(event.pos):
+                    # 3. NOU REPARAT: Click pe butonul AI ON/OFF
+                    elif self.ai_button_rect.collidepoint(event.pos):
+                        self.ai_enabled = not self.ai_enabled
+                        if hasattr(broker, "ai_enabled"):
+                            broker.ai_enabled = self.ai_enabled
+
+                    # 4. Click pe butonul CĂPRIOARĂ
+                    elif self.animal_button_rect.collidepoint(event.pos):
                         if hasattr(broker, "trigger_animal_event"):
                             broker.trigger_animal_event()
 
@@ -599,6 +621,7 @@ class SimulationUI:
             pygame.display.flip()
             self.clock.tick(self.fps)
         pygame.quit()
+        sys.exit(0)
 
 
 if __name__ == "__main__":

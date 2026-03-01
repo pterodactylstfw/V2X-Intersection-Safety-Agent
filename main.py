@@ -253,31 +253,41 @@ def run_simulation():
             status_caprioara = caprioara.get_status()
 
             if status_caprioara is not None:
-                # Dacă e pe stradă, îi publicăm datele
                 broker.publish(caprioara.agent_id, status_caprioara)
             else:
-                # Dacă e ascunsă, ne asigurăm că e ștearsă din rețea ca să nu dea eroare
                 with broker.lock:
                     broker.vehicles_status.pop(caprioara.agent_id, None)
 
+            # ==================================================
+            # NOU: DETECȚIE ACCIDENTE MAI REALISTĂ
+            # ==================================================
             agent_ids = list(agenti.keys())
             for i in range(len(agent_ids)):
                 for j in range(i + 1, len(agent_ids)):
                     a1 = agenti[agent_ids[i]]
                     a2 = agenti[agent_ids[j]]
+
+                    # Ignorăm dacă ambele sunt deja crashed (să nu spamăm consola)
+                    if getattr(a1, "is_crashed", False) and getattr(
+                        a2, "is_crashed", False
+                    ):
+                        continue
+
                     dist = math.sqrt(
                         (a1.position_x - a2.position_x) ** 2
                         + (a1.position_y - a2.position_y) ** 2
                     )
-                    if dist < 18 and not broker.ai_enabled:
+
+                    # Dacă sunt la mai puțin de 28 pixeli, BOOM! (Coliziune)
+                    # Coliziunea are loc DOAR dacă sistemul de prevenție (AI) e oprit
+                    if dist < 28 and not getattr(broker, "ai_enabled", True):
                         a1.is_crashed = True
                         a2.is_crashed = True
                         print(
-                            f"💥 ACCIDENT REALE: {a1.agent_id} s-a lovit de {a2.agent_id}!"
+                            f"💥 ACCIDENT FATAL: {a1.agent_id} s-a izbit violent de {a2.agent_id}!"
                         )
 
-            # Folosim un "list()" în jurul items() pentru a putea modifica (adăuga/șterge)
-            # agenți în timp ce iterăm prin ei
+            # Procesăm fiecare mașină
             for a_id, agent in list(agenti.items()):
 
                 agent.memory.clear()
@@ -290,7 +300,6 @@ def run_simulation():
                 # 2. Alegem intersecția către care se îndreaptă mașina BAZAT PE RUTĂ
                 target_int = (agent.position_x, agent.position_y)  # Fallback
 
-                # Căutăm în viitorul rutei ce intersecție urmează
                 for idx in range(agent.current_node_index + 1, len(agent.route)):
                     n = agent.route[idx]
                     if "I1" in n:
@@ -306,24 +315,32 @@ def run_simulation():
                         target_int = (770, 455)
                         break
 
-                # Trimitem coordonatele corecte către AI
-                agent.decide_action(target_int[0], target_int[1])
+                # 3. TRUCUL: Transmitem starea butonului AI către creierul mașinii!
+                ai_este_pornit = getattr(broker, "ai_enabled", True)
+                agent.decide_action(
+                    target_int[0], target_int[1], ai_global_enabled=ai_este_pornit
+                )
 
                 agent.update_position(dt)
 
-                # Marcăm agentul când intră în cadru (prima apariție)
+                # Marcăm agentul când intră în cadru
                 if not is_outside_screen(agent):
                     seen_on_screen.add(a_id)
 
-                # Îl ștergem doar dacă a fost văzut deja și apoi a ieșit
-                if a_id in seen_on_screen and is_outside_screen(agent):
+                # Îl ștergem doar dacă a ieșit din ecran ȘI NU E CRASHED
+                # (Dacă e crashed, va rămâne pe ecran ca epavă)
+                if (
+                    a_id in seen_on_screen
+                    and is_outside_screen(agent)
+                    and not getattr(agent, "is_crashed", False)
+                ):
                     with broker.lock:
                         broker.vehicles_status.pop(a_id, None)
                     del agenti[a_id]
                     seen_on_screen.discard(a_id)
                     continue
 
-                # 3. Publicăm
+                # 4. Publicăm
                 broker.publish(a_id, agent.get_emergency_status())
             time.sleep(dt)
 
