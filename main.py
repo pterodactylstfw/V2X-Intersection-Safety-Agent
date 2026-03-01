@@ -40,32 +40,63 @@ def run_simulation():
         [
             (
                 "system",
-                """Ești 'Directorul de Trafic' al unui oraș inteligent. Rolul tău este să generezi un vehicul nou.
-        Intrări valide în oraș: W_START, E_START, S1_START, S2_START, NW_START, NE_ONEWAY_START
-        Ieșiri valide din oraș: W_END, E_END, S1_END, S2_END, NW_END
+                """Ești 'Directorul de Trafic AI' al unui oraș inteligent. Rolul tău este să adaugi un vehicul nou pe o stradă LIBERĂ, asigurând un trafic DIVERS și FLUID.
         
-        Reguli:
-        1. Alege o intrare și o ieșire care să aibă sens (ex. de la W_START la E_END). Nu alege aceeași parte cardinală.
-        2. Alege o viteză realistă între 55.0 și 75.0.
-        3. Alege tipul vehiculului: 'Normal' sau 'Ambulance' (ai un buget mic de ambulanțe, folosește-le rar).
+        AI LA DISPOZIȚIE ACESTE RUTE VALIDE (Alege STRICT una din combinațiile de mai jos):
+        - W_START (Vest) -> E_END, S2_END sau NW_END
+        - E_START (Est) -> W_END, S1_END sau NW_END
+        - S1_START (Sud 1) -> NW_END sau E_END
+        - S2_START (Sud 2) -> W_END sau NW_END
+        - NW_START (Nord-Vest) -> S1_END, E_END sau S2_END
+        - NE_ONEWAY_START (Nord-Est) -> S2_END, W_END sau S1_END
+
+        REGULI STRICTE:
+        1. INTERZIS U-TURN! Nu trimite niciodată o mașină la aceeași ieșire de unde a plecat (ex: interzis W_START -> W_END). Alege DOAR din rutele de mai sus.
+        2. FII IMPREVIZIBIL: Alege puncte de plecare diferite față de mașinile deja existente. Răspândește traficul pe toată harta!
+        3. Alege o viteză realistă între 55.0 și 75.0.
+        4. Alege tipul: 'Normal' (90% din cazuri) sau 'Ambulance' (10%).
+        5. Dacă s-a aglomerat prea mult pe o rută, evit-o și alege alta liberă.
         
-        RĂSPUNDE STRICT CU UN JSON VALID, fără niciun alt text, folosind exact acest format:
+        RĂSPUNDE STRICT CU UN JSON VALID, fără niciun alt text, fix în acest format:
         {{"start_node": "...", "target_node": "...", "speed": 65.5, "v_type": "Normal"}}
         """,
             ),
-            ("human", "Te rog, trimite un vehicul nou în oraș!"),
+            (
+                "human",
+                "Trafic curent pe hartă:\n{traffic_info}\n(Zar de diversitate: {rand_val})\nTe rog, analizează și trimite un vehicul nou pe o rută logică și liberă!",
+            ),
         ]
     )
+
     spawn_chain = spawn_prompt | llm_spawn
 
     def ai_spawn_car():
-        # Rulăm apelul către AI într-un thread separat ca să nu înghețăm jocul (Pygame)
         def task():
-            print("🧠 [Traffic Director] Se gândește la un traseu...")
-            try:
-                response = spawn_chain.invoke({})
+            print(
+                "🧠 [Traffic Director] Scanează străzile și calculează ruta optimă..."
+            )
 
-                # Curățăm textul ca să fim siguri că citim doar JSON-ul
+            # 1. Colectăm pozițiile reale ale tuturor mașinilor din dicționarul 'agenti'
+            active_cars = []
+            for a_id, a in list(agenti.items()):
+                if hasattr(a, "position_x") and hasattr(a, "position_y"):
+                    active_cars.append(
+                        f"{a_id} la (X:{a.position_x:.0f}, Y:{a.position_y:.0f}) mergand spre {a.heading}"
+                    )
+
+            traffic_info = "\n".join(active_cars)
+            if not traffic_info:
+                traffic_info = "Nicio mașină pe hartă. Orașul este complet gol."
+
+            # 2. Injectăm un număr aleator pentru a forța AI-ul să schimbe mereu răspunsul (Diversitate)
+            rand_val = random.randint(1, 10000)
+
+            try:
+                # 3. Pasăm informația reală către AI
+                response = spawn_chain.invoke(
+                    {"traffic_info": traffic_info, "rand_val": rand_val}
+                )
+
                 raw_content = (
                     response.content.replace("```json", "").replace("```", "").strip()
                 )
@@ -79,6 +110,7 @@ def run_simulation():
                 new_id = f"AI_Car_{random.randint(100, 999)}"
                 d_style = "Aggressive" if v_type == "Ambulance" else "Cautious"
 
+                # 4. Creăm mașina pe nodul ales de el
                 agent_nou = VehicleAgent(
                     agent_id=new_id,
                     start_node=start_n,
@@ -90,11 +122,10 @@ def run_simulation():
 
                 agenti[new_id] = agent_nou
                 print(
-                    f"✅ [Traffic Director] A creat {new_id} ({v_type})! Traseu: {start_n} -> {target_n} (V: {speed:.1f})"
+                    f"✅ [Traffic Director] Succes! A evitat aglomerația și a creat {new_id} ({v_type}) la {start_n} -> {target_n}"
                 )
 
             except Exception as e:
-                # Fallback de siguranță dacă AI-ul dă un JSON greșit
                 print(
                     f"⚠️ [Traffic Director] Eroare format: {e}. Aplic Fallback Random."
                 )
@@ -102,16 +133,18 @@ def run_simulation():
                     ("W_START", "E_END"),
                     ("NW_START", "S1_END"),
                     ("S2_START", "W_END"),
+                    ("E_START", "W_END"),
+                    ("S1_START", "NW_END"),
                 ]
                 sn, tn = random.choice(rute_fallback)
-                agenti[f"Fallback_{random.randint(10,99)}"] = VehicleAgent(
-                    f"Fallback_{random.randint(10,99)}", sn, tn, 60.0
-                )
+                fid = f"Fallback_{random.randint(10,99)}"
+                agenti[fid] = VehicleAgent(fid, sn, tn, 60.0)
 
         threading.Thread(target=task, daemon=True).start()
 
-    # Legăm butonul de noua funcție AI
     broker.trigger_spawn_car = ai_spawn_car
+    # ==========================================
+    # ==========================================
     # ==========================================
 
     # ==========================================

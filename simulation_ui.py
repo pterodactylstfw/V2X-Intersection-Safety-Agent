@@ -43,6 +43,9 @@ class SimulationUI:
 
         # NOU: Butonul pentru căprioară (sub cel de sistem)
         self.animal_button_rect = pygame.Rect(20, 70, 150, 40)
+
+        self.spawn_car_button_rect = pygame.Rect(190, 70, 150, 40)
+
         self.DEER_DECOR_POINTS = [
             (1270, 590),
             (1330, 565),
@@ -470,6 +473,15 @@ class SimulationUI:
             text_animal,
             (self.animal_button_rect.x + 10, self.animal_button_rect.y + 12),
         )
+        # Desenăm butonul de Spawn AI Car
+        pygame.draw.rect(
+            self.screen, (0, 100, 200), self.spawn_car_button_rect, border_radius=5
+        )
+        text_spawn = self.small_font.render("🤖 SPAWN AI CAR", True, (255, 255, 255))
+        self.screen.blit(
+            text_spawn,
+            (self.spawn_car_button_rect.x + 15, self.spawn_car_button_rect.y + 12),
+        )
 
     def draw_ai_button(self):
         color = (0, 180, 0) if self.ai_enabled else (180, 0, 0)
@@ -554,10 +566,9 @@ class SimulationUI:
                         self.system_on = not self.system_on
                         if hasattr(broker, "infrastructure_active"):
                             broker.infrastructure_active = self.system_on
-                    elif self.ai_button_rect.collidepoint(event.pos):
-                        self.ai_enabled = not self.ai_enabled
-                        if hasattr(broker, "ai_enabled"):
-                            broker.ai_enabled = self.ai_enabled
+                    elif self.spawn_car_button_rect.collidepoint(event.pos):
+                        if hasattr(broker, "trigger_spawn_car"):
+                            broker.trigger_spawn_car()
 
                     # NOU: Detecție click pentru butonul căprioarei
                     if self.animal_button_rect.collidepoint(event.pos):
