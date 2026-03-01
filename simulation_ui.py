@@ -107,6 +107,77 @@ class SimulationUI:
             return False
         x, y = v_data.get("position_x", 0), v_data.get("position_y", 0)
         return x < -50 or x > SCREEN_WIDTH + 50 or y < -50 or y > SCREEN_HEIGHT + 50
+    
+    def draw_risk_aura(self, center, radius, color_rgb, max_alpha=120, rings=6):
+        """
+        Desenează un glow circular (aura) în jurul unui punct.
+        color_rgb: (r,g,b)
+        max_alpha: transparență maximă
+        rings: câte "inele" pentru gradient
+        """
+        x, y = int(center[0]), int(center[1])
+
+        aura = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+        cx, cy = radius, radius
+
+        # gradient: exterior mai transparent, interior mai intens
+        for i in range(rings):
+            t = i / max(1, rings - 1)
+            r = int(radius * (1.0 - 0.12 * i))
+            a = int(max_alpha * (1.0 - t) ** 2)
+            pygame.draw.circle(aura, (*color_rgb, a), (cx, cy), r)
+
+        self.screen.blit(aura, (x - radius, y - radius))
+
+    def _intersection_centers_and_degree(self):
+        """
+        Returnează listă de (center_xy, degree) pentru intersecții I1/I2/I3.
+        degree ~ câte drumuri ies din intersecție (aprox).
+        """
+        intersections = ["I1", "I2", "I3"]
+        results = []
+
+        # construim set de muchii pentru numărare
+        for inter in intersections:
+            corners = [f"{inter}_NW", f"{inter}_NE", f"{inter}_SE", f"{inter}_SW"]
+            pts = [nodes.get(c) for c in corners if nodes.get(c)]
+            if len(pts) != 4:
+                continue
+
+            cx = sum(p[0] for p in pts) / 4
+            cy = sum(p[1] for p in pts) / 4
+
+            # numărăm muchii care ating intersecția și merg spre "afară"
+            degree = 0
+            for u, v, _ in edges:
+                u_is = u.startswith(inter + "_")
+                v_is = v.startswith(inter + "_")
+                # o muchie care pleacă din intersecție spre un nod care NU e din intersecție
+                if u_is and not v_is:
+                    degree += 1
+                # și una care intră din afară în intersecție
+                if v_is and not u_is:
+                    degree += 1
+
+            results.append(((cx, cy), degree))
+        return results
+    
+    def draw_risk_overlays(self, current_traffic=None):
+        # 1) intersecții: 4 ramuri = roșu intens, 3 ramuri = roșu mai soft
+        for center, degree in self._intersection_centers_and_degree():
+            # praguri simple: ajustează după ce vezi “degree” în practică
+            if degree >= 8:  # de obicei intersecțiile “mari” au mai multe intrări/ieșiri în graf
+                self.draw_risk_aura(center, radius=85, color_rgb=(255, 0, 0), max_alpha=140)
+            else:
+                self.draw_risk_aura(center, radius=70, color_rgb=(255, 0, 0), max_alpha=85)
+
+        # 2) căprioară: portocaliu, dacă există în trafic
+        if current_traffic:
+            for v in current_traffic.values():
+                if v and v.get("vehicle_type") == "Animal":
+                    x = v.get("position_x", 0)
+                    y = v.get("position_y", 0)
+                    self.draw_risk_aura((x, y), radius=40, color_rgb=(255, 140, 0), max_alpha=110)
 
     def draw_dashed_line_segment(
         self, p1, p2, color, dash_length=15, gap_length=10, offset=0
@@ -494,6 +565,7 @@ class SimulationUI:
                     del broker.vehicles_status[k]
                 current_traffic = broker.vehicles_status.copy()
 
+            self.draw_risk_overlays(current_traffic)
             self.draw_traffic_light_agent(current_traffic)
 
             for v_data in current_traffic.values():
