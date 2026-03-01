@@ -15,7 +15,8 @@ from map_config import nodes, edges
 
 load_dotenv()
 
-SECRET_KEY = "HACKATHON_AUTO_SECURE_2026"
+
+SECRET_KEY = os.getenv("HASH_SECRET_KEY", "default-fallback-key")
 
 
 def sign_data(data):
@@ -255,7 +256,7 @@ class VehicleAgent:
                         (ox - self.position_x) ** 2 + (oy - self.position_y) ** 2
                     )
 
-                    # NOU REPARAT: Verificăm dacă sunt cu adevărat pe același drum (unghi vizual similar)
+                    # 1. FIX FANTOME: Verificăm dacă sunt cu adevărat pe același drum
                     angle_diff = abs(
                         (self.visual_angle % 360)
                         - (other_data.get("visual_angle", 0) % 360)
@@ -265,7 +266,13 @@ class VehicleAgent:
                     if angle_diff > 25.0:
                         continue  # Ignoră dacă cealaltă mașină se află pe un drum diagonal
 
-                    # NOU: Distanță de siguranță micșorată pentru șoferii agresivi
+                    # 2. WAZE BYPASS: Dacă mașina din față e lovită, trage stânga pe contrasens!
+                    if other_data.get("is_crashed", False) and dist_to_front < 160.0:
+                        obstacle_in_front = True
+                        self.target_lane_offset = 45.0  # 45px deviație
+                        continue  # Sari peste frânare ca să poată avansa!
+
+                    # 3. ACC: Frânarea normală pentru trafic
                     safe_distance = 55.0 if self.driving_style == "Aggressive" else 90.0
 
                     if dist_to_front < safe_distance:
@@ -624,7 +631,7 @@ class VehicleAgent:
         # CLOUD TELEMETRY: Trimitem datele spre Docker (Grafana)
         # ==========================================
         # Trimitem date o dată la ~1 secundă (ca să nu facem spam pe rețea)
-        if hasattr(self, 'last_telemetry_time'):
+        if hasattr(self, "last_telemetry_time"):
             if time.time() - self.last_telemetry_time < 1.0:
                 return
         self.last_telemetry_time = time.time()
@@ -632,20 +639,20 @@ class VehicleAgent:
         # Formatăm datele pentru baza de date InfluxDB
         is_braking = 1 if self.current_state == "BRAKING" else 0
         data_string = f"vehicle_stats,agent_id={self.agent_id} speed={self.speed},braking={is_braking}"
-        
+
         headers = {"Authorization": "Token super-secret-auth-token"}
-        
+
         # Trimitem pe un thread separat ca să nu agățăm interfața grafică Pygame
         def send_to_cloud():
             try:
                 requests.post(
-                    "http://localhost:8086/api/v2/write?org=v2x_org&bucket=telemetry&precision=s", 
-                    headers=headers, 
-                    data=data_string, 
-                    timeout=0.5
+                    "http://localhost:8086/api/v2/write?org=v2x_org&bucket=telemetry&precision=s",
+                    headers=headers,
+                    data=data_string,
+                    timeout=0.5,
                 )
             except:
-                pass # Dacă Docker-ul e oprit, ignorăm eroarea și mașina merge mai departe
+                pass  # Dacă Docker-ul e oprit, ignorăm eroarea și mașina merge mai departe
 
         threading.Thread(target=send_to_cloud, daemon=True).start()
 
