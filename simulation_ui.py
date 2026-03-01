@@ -464,6 +464,8 @@ class SimulationUI:
                     g_c = COLOR_GREEN
                 elif state == "RED":
                     r_c = COLOR_RED
+                elif state == "YELLOW" or state == "YELLOW_BLINKING":
+                    y_c = COLOR_YELLOW
             offsets = [-18, 0, 18]
             cols = [r_c, y_c, g_c] if not flip else [g_c, y_c, r_c]
             for i in range(3):
