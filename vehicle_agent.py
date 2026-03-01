@@ -245,7 +245,10 @@ class VehicleAgent:
                     dist_to_front = math.sqrt(
                         (ox - self.position_x) ** 2 + (oy - self.position_y) ** 2
                     )
-                    if dist_to_front < 90.0:
+                    # NOU: Distanță de siguranță micșorată pentru șoferii agresivi
+                    safe_distance = 55.0 if self.driving_style == "Aggressive" else 90.0
+
+                    if dist_to_front < safe_distance:
                         self._brake(f"ACC: Frânez pt {other_id}")
                         return
 
@@ -335,7 +338,9 @@ class VehicleAgent:
             time_to_change = semafor_data.get("time_to_change", 5.0)
 
             if culoare_axa_mea == "RED":
-                if dist_to_int < 120.0:
+                # NOU: Șoferul agresiv frânează mult mai târziu la semafor!
+                brake_dist = 80.0 if self.driving_style == "Aggressive" else 120.0
+                if dist_to_int < brake_dist:
                     self._brake("V2I: Opresc la Semafor ROȘU")
                     return
                 elif dist_to_int < 400.0:
@@ -348,12 +353,18 @@ class VehicleAgent:
                             self.speed = max(viteza_optima, self.speed - 0.2)
                             return
             elif culoare_axa_mea == "YELLOW":
-                timp_pana_la_centru = dist_to_int / max(self.speed, 1.0)
-                if timp_pana_la_centru <= time_to_change + 0.5:
+                # NOU: Șoferul agresiv ignoră total semaforul Galben și trece!
+                if self.driving_style == "Aggressive":
                     has_green_light = True
-                elif dist_to_int > 120.0 or (dist_to_int > 60.0 and self.speed < 1.0):
-                    self._brake("V2I: Opresc la Semafor GALBEN")
-                    return
+                else:
+                    timp_pana_la_centru = dist_to_int / max(self.speed, 1.0)
+                    if timp_pana_la_centru <= time_to_change + 0.5:
+                        has_green_light = True
+                    elif dist_to_int > 120.0 or (
+                        dist_to_int > 60.0 and self.speed < 1.0
+                    ):
+                        self._brake("V2I: Opresc la Semafor GALBEN")
+                        return
             elif culoare_axa_mea == "GREEN":
                 has_green_light = True
 
@@ -470,12 +481,16 @@ class VehicleAgent:
 
     def _brake(self, reason):
         self.current_state = "BRAKING"
-        self.speed = max(0, self.speed - 4.5)
+        # NOU: Frână bruscă sportivă pentru Agresivi (-6.0), frână lină pentru restul (-4.5)
+        decel_rate = 6.0 if self.driving_style == "Aggressive" else 4.5
+        self.speed = max(0, self.speed - decel_rate)
 
     def _recover_speed(self):
         self.current_state = "CRUISE"
+        # NOU: Demaraj în forță pentru Agresivi (+4.0), demaraj lent pentru restul (+2.0)
+        accel_rate = 4.0 if self.driving_style == "Aggressive" else 2.0
         if self.speed < self.desired_speed:
-            self.speed = min(self.desired_speed, self.speed + 2.0)
+            self.speed = min(self.desired_speed, self.speed + accel_rate)
 
     def _negotiate_ai(self, other_id, other_data):
         if self.waiting_for_ai:
@@ -597,6 +612,7 @@ class VehicleAgent:
             "position_x": self.position_x,
             "position_y": self.position_y,
             "speed": self.speed,
+            "driving_style": self.driving_style,
             "vehicle_type": self.vehicle_type,
             "visual_angle": self.visual_angle,
             "intent": (

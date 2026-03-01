@@ -24,6 +24,14 @@ COLOR_YELLOW = (255, 165, 0)
 COLOR_GRASS = (69, 108, 46)
 
 
+def scale_aspect_ratio(image, target_width):
+    """Scalează o imagine la lățimea dorită, păstrând proporțiile (aspect ratio)."""
+    original_rect = image.get_rect()
+    aspect_ratio = original_rect.width / original_rect.height
+    new_height = int(target_width / aspect_ratio)
+    return pygame.transform.scale(image, (target_width, new_height))
+
+
 class SimulationUI:
     def __init__(self, title="V2X Stylized Grid Simulator"):
         pygame.init()
@@ -62,6 +70,9 @@ class SimulationUI:
         try:
             self.img_normal = pygame.image.load("car.png").convert_alpha()
             self.img_ambulance = pygame.image.load("ambulance.png").convert_alpha()
+            self.img_aggressive = pygame.image.load(
+                "car-aggressive.png"
+            ).convert_alpha()
             self.img_indicator = pygame.image.load("indicator.png").convert_alpha()
             self.img_indicator = pygame.transform.scale(self.img_indicator, (30, 30))
             # NOU: Încărcăm poza cu căprioara
@@ -74,6 +85,8 @@ class SimulationUI:
         self.rotation_map = {"EAST": 0, "NORTH": 90, "WEST": 180, "SOUTH": 270}
 
     def draw_indicator(self):
+        if not hasattr(self, "img_indicator"):
+            return
         x1, y1 = 1400, 580  # indicator 1 (sus)
         x2, y2 = 1300, 700  # indicator 2 (jos)
 
@@ -531,14 +544,25 @@ class SimulationUI:
         priority = v_data.get("priority_active", False)
         heading = v_data.get("heading", "EAST")  # Fallback for old mode
 
-        w, h = 45, 28
+        # --- NOU: SETĂM DOAR LĂȚIMEA, ÎNĂLȚIMEA E CALCULATĂ AUTOMAT ---
+        target_width = 45
 
         if self.use_images:
-            base_img = self.img_ambulance if v_type == "Ambulance" else self.img_normal
-            base_img = pygame.transform.scale(base_img, (w, h))
+            # Alegem imaginea corectă în funcție de tip și stil
+            driving_style = v_data.get("driving_style", "Cautious")
+
+            if v_type == "Ambulance":
+                base_img = self.img_ambulance
+            elif driving_style == "Aggressive" and hasattr(self, "img_aggressive"):
+                base_img = self.img_aggressive
+            else:
+                base_img = self.img_normal
+
+            # Scalăm folosind noua funcție care păstrează proporțiile
+            scaled_img = scale_aspect_ratio(base_img, target_width)
 
             angle_to_draw = -exact_angle
-            rotated_img = pygame.transform.rotate(base_img, angle_to_draw)
+            rotated_img = pygame.transform.rotate(scaled_img, angle_to_draw)
             rect = rotated_img.get_rect(center=(int(x), int(y)))
             self.screen.blit(rotated_img, rect)
         else:

@@ -164,6 +164,7 @@ def run_simulation():
         start_node="W_START",
         target_node="E_END",
         desired_speed=85.0,  # Vine glonț din spate
+        driving_style="Aggressive",
     )
     # TRUC: O mutăm manual 150px mai în spate ca să vedem cum o ajunge din urmă și frânează
     agent_urmaritor.position_x -= 150
