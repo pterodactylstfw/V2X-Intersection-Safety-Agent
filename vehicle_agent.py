@@ -31,8 +31,8 @@ class VehicleAgent:
     def __init__(
         self,
         agent_id,
-        start_node, 
-        target_node, 
+        start_node,
+        target_node,
         desired_speed,
         vehicle_type="Normal",
         driving_style="Cautious",
@@ -43,20 +43,20 @@ class VehicleAgent:
         self.vehicle_type = vehicle_type
         self.driving_style = driving_style
         self.current_state = "CRUISE"
-        self.turn_intent = "GO_STRAIGHT" 
+        self.turn_intent = "GO_STRAIGHT"
         self.memory = {}
         self.last_ai_decision = None
         self.last_ai_call_time = 0
         self.decision_cooldown = 1.0
         self.waiting_for_ai = False
         self.visual_angle = 0.0
-        self.target_int = (0, 0) 
+        self.target_int = (0, 0)
         self.is_crashed = False
 
         self.target_lane_offset = 0.0
         self.current_lane_offset = 0.0
 
-        # GENERAREA RUTEI 
+        # GENERAREA RUTEI
         self.graph = nx.DiGraph()
         for start, end, cost in edges:
             self.graph.add_edge(start, end, weight=cost)
@@ -157,12 +157,12 @@ class VehicleAgent:
             print(
                 f"[{self.agent_id}] ATAC CIBERNETIC DETECTAT! Semnătură falsă de la {sender_id}!"
             )
-            return  
+            return
 
         self.memory[sender_id] = message
 
     def decide_action(self, int_x, int_y, ai_global_enabled=True):
-        self.target_int = (int_x, int_y) 
+        self.target_int = (int_x, int_y)
 
         if self.is_crashed:
             self.speed = 0
@@ -242,16 +242,14 @@ class VehicleAgent:
                     if angle_diff > 180:
                         angle_diff = 360 - angle_diff
                     if angle_diff > 25.0:
-                        continue  
+                        continue
 
                     if other_data.get("is_crashed", False) and dist_to_front < 160.0:
                         obstacle_in_front = True
-                        self.target_lane_offset = (
-                            80.0  
-                        )
+                        self.target_lane_offset = 80.0
                         continue
 
-                    safe_distance = 150.0  
+                    safe_distance = 150.0
 
                     if dist_to_front < safe_distance:
                         viteza_lider = other_data.get("speed", 0.0)
@@ -260,13 +258,11 @@ class VehicleAgent:
                             if dist_to_front > 60.0:
                                 return
 
-                            if dist_to_front < 47.0: 
+                            if dist_to_front < 47.0:
                                 self.speed = max(0.0, viteza_lider - 5.0)
                             else:
                                 if self.speed > viteza_lider:
-                                    self.speed = max(
-                                        viteza_lider, self.speed - 15.0
-                                    )  
+                                    self.speed = max(viteza_lider, self.speed - 15.0)
                                 else:
                                     self.speed = viteza_lider
                             self.current_state = "BRAKING"
@@ -394,9 +390,7 @@ class VehicleAgent:
                     timp_pana_la_centru = dist_to_int / max(self.speed, 1.0)
                     if timp_pana_la_centru <= time_to_change + 0.5:
                         has_green_light = True
-                    elif (
-                        dist_to_int <= 150.0
-                    ):  
+                    elif dist_to_int <= 150.0:
                         self._brake("V2I: Opresc la Semafor GALBEN")
                         return
             elif culoare_axa_mea == "GREEN":
@@ -451,10 +445,10 @@ class VehicleAgent:
                             if dist_to_int > 45.0:
                                 self.speed = max(0.0, self.speed - 3.5)
                             else:
-                                self.speed = 0.0 
+                                self.speed = 0.0
 
                             self._brake(f"Prioritate de dreapta pentru {other_id}")
-                            return 
+                            return
 
         # IERARHIA 3A: ZIPPER MERGE
         if abs(int_x - 770) < 20 and abs(int_y - 455) < 20:
@@ -591,6 +585,7 @@ class VehicleAgent:
         self.waiting_for_ai = True
 
         def ai_task():
+            start_time = time.time()  # NOU: Pornim cronometrul
             try:
                 res = self.chain.invoke(
                     {
@@ -602,11 +597,32 @@ class VehicleAgent:
                         "other_heading": other_data.get("heading", "UNKNOWN"),
                     }
                 )
+
+                # NOU: Oprim cronometrul și calculăm latența în milisecunde
+                latency_ms = int((time.time() - start_time) * 1000)
+
                 self.last_ai_decision = res.content.upper()
                 print(
-                    f"[AI Prioritate] {self.agent_id}({self.heading}) a vazut {other_id}({other_data.get('heading')}) -> A decis: {self.last_ai_decision}"
+                    f"[AI Prioritate] {self.agent_id}({self.heading}) a vazut {other_id}({other_data.get('heading')}) -> A decis: {self.last_ai_decision} (Latență: {latency_ms} ms)"
                 )
                 self.last_ai_call_time = time.time()
+
+                # NOU: Trimitem latența către InfluxDB/Grafana
+                def send_latency():
+                    try:
+                        headers = {"Authorization": "Token super-secret-auth-token"}
+                        data_string = f"ai_latency,agent_id={self.agent_id} response_time_ms={latency_ms}"
+                        requests.post(
+                            "http://localhost:8086/api/v2/write?org=v2x_org&bucket=telemetry&precision=s",
+                            headers=headers,
+                            data=data_string,
+                            timeout=0.5,
+                        )
+                    except:
+                        pass  # Ignorăm eroarea dacă baza de date nu este pornită
+
+                threading.Thread(target=send_latency, daemon=True).start()
+
             except Exception as e:
                 print(f"[AI EROARE] {self.agent_id} -> Frână de urgență!")
                 self.last_ai_decision = "FRANEAZA"
@@ -651,7 +667,7 @@ class VehicleAgent:
         else:
             self.heading = "WEST"
 
-        viteză_virare = 55.0 
+        viteză_virare = 55.0
 
         if self.current_lane_offset < self.target_lane_offset:
             self.current_lane_offset += viteză_virare * dt
@@ -663,7 +679,7 @@ class VehicleAgent:
                 self.current_lane_offset = self.target_lane_offset
 
         angle_rad = math.radians(self.visual_angle)
-        perp_angle = angle_rad - math.pi / 2 
+        perp_angle = angle_rad - math.pi / 2
 
         self.position_x = self.base_x + math.cos(perp_angle) * self.current_lane_offset
         self.position_y = self.base_y + math.sin(perp_angle) * self.current_lane_offset
@@ -689,7 +705,7 @@ class VehicleAgent:
                     timeout=0.5,
                 )
             except:
-                pass 
+                pass
 
         threading.Thread(target=send_to_cloud, daemon=True).start()
 
