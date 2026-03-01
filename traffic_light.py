@@ -27,24 +27,23 @@ class TrafficLightAgent:
 
     def _run_loop(self):
         while self.running:
-            # 1. VERIFICARE BUTON AVARIE
             if not getattr(self.broker, "infrastructure_active", True):
                 self._publish_state(
                     "YELLOW_BLINKING", "YELLOW_BLINKING", time_to_change=0.0
                 )
-                time.sleep(0.5)  # Rulăm frecvent pentru a detecta repornirea
+                time.sleep(0.5)  # -> frecvent pentru a detecta repornirea
                 continue
 
             traffic_data = self.broker.receive(self.agent_id)
             emergency_heading = None
 
             for v_id, v_data in traffic_data.items():
-                if v_data.get("vehicle_type") == "Ambulance":  # Dacă e ambulanță
+                if v_data.get("vehicle_type") == "Ambulance":  # ambulanță
                     dist_to_center = math.sqrt(
                         (400 - v_data.get("position_x", 0)) ** 2
                         + (400 - v_data.get("position_y", 0)) ** 2
                     )
-                    if dist_to_center < 300:  # Și e aproape de intersecție
+                    if dist_to_center < 300:  # aproape de intersecție
                         emergency_heading = v_data.get("heading")
                         break
 
@@ -53,14 +52,13 @@ class TrafficLightAgent:
                 if emergency_heading in ["NORTH", "SOUTH"]:
                     self._publish_state(
                         "GREEN", "RED", time_to_change=99.0
-                    )  # 99.0 = ține verde indefinit
+                    )  
                 else:
                     self._publish_state("RED", "GREEN", time_to_change=99.0)
                 time.sleep(0.1)
-                continue  # Sari peste ciclul normal cât timp e urgență
+                continue  
 
-            # 2. CICLUL NORMAL (Am integrat GLOSA aici)
-            # Trimitem timpul rămas direct din funcția de așteptare!
+            # CICLUL NORMAL
 
             # NS Verde, EW Roșu (5 secunde)
             if not self._wait_interruptible(5.0, "GREEN", "RED"):
@@ -88,7 +86,7 @@ class TrafficLightAgent:
             # CALCULĂM TIMPUL RĂMAS: total pași - pașii făcuți
             time_to_change = (steps - step) * 0.1
 
-            # Publicăm starea la fiecare 0.1 secunde, cu tot cu timpul rămas!
+            # Publicăm starea la fiecare 0.1 secunde, cu tot cu timpul rămas
             self._publish_state(state_ns, state_ew, time_to_change)
 
             time.sleep(0.1)
@@ -106,9 +104,9 @@ class TrafficLightAgent:
             "time_to_change": round(time_to_change, 1),
             "position_x": 400,
             "position_y": 400,
-            "timestamp": time.time(),  # Adăugăm timpul
+            "timestamp": time.time(),  
         }
 
-        # Semnăm digital și starea semaforului!
+        # Semnăm digital și starea semaforului pentru a preveni falsificarea datelor
         data_package["signature"] = sign_data(data_package)
         self.broker.publish(self.agent_id, data_package)

@@ -3,7 +3,7 @@
 # Logica: 4 noduri per intersecție (Colțurile: NW, NE, SE, SW) cu viraje perpendiculare.
 
 nodes = {
-    # --- MARGINI (Punctele de Spawn / Ieșire nu se schimbă) ---
+    # --- MARGINI (Punctele de Spawn / Ieșire) ---
     "W_START": (0, 675),
     "W_END": (0, 635),
     "E_START": (1500, 635),
@@ -31,7 +31,7 @@ nodes = {
     "I3_SE": (420, 310),
     "I3_SW": (380, 320),
     # --- INTERSECȚIA 4 (Merge Points - rămâne la fel de simplu) ---
-    "MERGE_UP": (770, 455),  # Mijlocul matematic perfect între I2_NE și I3_NE
+    "MERGE_UP": (770, 455),  
     "MERGE_DOWN": (760, 475),
 }
 
@@ -67,7 +67,7 @@ edges = [
     # --- 3. SENS UNIC I4 ---
     ("NE_ONEWAY_START", "MERGE_UP", 1),
     ("NE_ONEWAY_START", "MERGE_DOWN", 1),  # Se varsă spre I2
-    # --- 4. LEGAREA INTERNĂ A INTERSECȚIILOR (Pătratul Perpendicular) ---
+    # --- 4. LEGAREA INTERNĂ A INTERSECȚIILOR ---
     # Mașinile circulă Counter-Clockwise în interior (regula de prioritate dreapta)
     # I1
     ("I1_NW", "I1_SW", 1),

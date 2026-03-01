@@ -386,9 +386,8 @@ class VehicleAgent:
         is_light_here = False
         has_green_light = False
 
-        # REPARAT: Setăm corect prezența semaforului la max 400px distanță (pentru a activa GLOSA)
-        if semafor_data and int_x == 400 and int_y == 650 and dist_to_int < 400.0:
-            is_light_here = True
+        if semafor_data and int_x == 400 and int_y == 650 and dist_to_int < 150.0:
+            culoare_axa_mea = "GREEN"
 
         if is_light_here and not in_intersection:
             culoare_axa_mea = "GREEN"
