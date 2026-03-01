@@ -21,11 +21,9 @@ SECRET_KEY = os.getenv("HASH_SECRET_KEY", "default-fallback-key")
 
 def sign_data(data):
     """Generează o amprentă digitală unică pentru pachetul de date."""
-    # Scoatem semnătura veche dacă există, pentru a nu o hașura de două ori
     clean_data = {k: v for k, v in data.items() if k != "signature"}
-    # Transformăm dicționarul în string și lipim parola secretă
     payload = json.dumps(clean_data, sort_keys=True) + SECRET_KEY
-    # Trecem totul prin algoritmul SHA-256
+    # algoritmul SHA-256
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -33,8 +31,8 @@ class VehicleAgent:
     def __init__(
         self,
         agent_id,
-        start_node,  # NOU: Folosim nume de noduri (ex: "W_START")
-        target_node,  # NOU: Folosim nume de noduri (ex: "E_END")
+        start_node, 
+        target_node, 
         desired_speed,
         vehicle_type="Normal",
         driving_style="Cautious",
@@ -45,21 +43,20 @@ class VehicleAgent:
         self.vehicle_type = vehicle_type
         self.driving_style = driving_style
         self.current_state = "CRUISE"
-        self.turn_intent = "GO_STRAIGHT"  # NOU: Pentru semnalizare/viraje
+        self.turn_intent = "GO_STRAIGHT" 
         self.memory = {}
         self.last_ai_decision = None
         self.last_ai_call_time = 0
         self.decision_cooldown = 1.0
         self.waiting_for_ai = False
         self.visual_angle = 0.0
-        self.target_int = (0, 0)  # Salvăm intersecția țintă pentru V2X
+        self.target_int = (0, 0) 
         self.is_crashed = False
 
-        # --- NOU: Parametri pentru schimbarea benzii (Ocolire) ---
         self.target_lane_offset = 0.0
         self.current_lane_offset = 0.0
 
-        # --- NOU: 1. GENERAREA RUTEI (Dijkstra) ---
+        # GENERAREA RUTEI 
         self.graph = nx.DiGraph()
         for start, end, cost in edges:
             self.graph.add_edge(start, end, weight=cost)
@@ -83,7 +80,7 @@ class VehicleAgent:
         self.position_x = self.base_x
         self.position_y = self.base_y
 
-        self.heading = "EAST"  # Default de siguranță
+        self.heading = "EAST"
         if len(self.route) > 1:
             next_coords = nodes[self.route[1]]
             angle = math.atan2(
@@ -99,11 +96,10 @@ class VehicleAgent:
             else:
                 self.heading = "WEST"
 
-        # Setăm direcția inițială (Heading)
         self._update_heading_and_turn()
 
         self.llm = ChatGroq(temperature=0, model_name="llama-3.1-8b-instant")
-        # --- PROMPT AI ÎMBUNĂTĂȚIT (Prioritate de Dreapta) ---
+        # PROMPT AI ÎMBUNĂTĂȚIT (Prioritate de Dreapta)
         self.prompt = ChatPromptTemplate.from_messages(
             [
                 (
@@ -127,23 +123,16 @@ class VehicleAgent:
         )
         self.chain = self.prompt | self.llm
 
-    # ==========================================
-    # FUNCȚIILE TALE VECHI (RESTAURATE)
-    # ==========================================
     def receive_v2x_message(self, message):
         sender_id = message.get("agent_id")
         if not sender_id or sender_id == self.agent_id:
             return
 
-        # NOU: Excepție pentru animale (ele sunt văzute vizual de senzori, nu au semnătură V2X)
         if message.get("vehicle_type") == "Animal":
             self.memory[sender_id] = message
             return
 
-        # ==========================================
         # SCUT DE SECURITATE V2X (3 Niveluri)
-        # ==========================================
-
         # NIVEL 1: Sanity Checks (Prevenim crash-uri de la date corupte)
         try:
             x = float(message.get("position_x", 0))
@@ -153,8 +142,7 @@ class VehicleAgent:
             print(f"[{self.agent_id}] ❌ PACHET CORUPT respins de la {sender_id}!")
             return
 
-        # NIVEL 2: Heartbeat & Anti-Ghosting (Prevenim mașinile blocate)
-        # Dacă mesajul e mai vechi de 2 secunde, înseamnă că mașina a pierdut conexiunea.
+        # NIVEL 2: Heartbeat & Anti-Ghosting (Prevenim mașinile blocate)=
         msg_time = message.get(
             "timestamp", time.time()
         )  # Folosim timpul curent ca fallback pentru JSON-urile vechi
@@ -167,33 +155,24 @@ class VehicleAgent:
 
         if received_sig != expected_sig:
             print(
-                f"[{self.agent_id}] 🚨 ATAC CIBERNETIC DETECTAT! Semnătură falsă de la {sender_id}!"
+                f"[{self.agent_id}] ATAC CIBERNETIC DETECTAT! Semnătură falsă de la {sender_id}!"
             )
-            return  # Respingem imediat pachetul fals!
+            return  
 
-        # Dacă a trecut de toate cele 3 filtre, abia acum îl salvăm în memorie!
         self.memory[sender_id] = message
 
     def decide_action(self, int_x, int_y, ai_global_enabled=True):
-        self.target_int = (int_x, int_y)  # O salvăm ca să o dăm mai departe în V2X
+        self.target_int = (int_x, int_y) 
 
-        # 1. DACĂ E DEJA LOVITĂ, RĂMÂNE PE LOC (Mort)
         if self.is_crashed:
             self.speed = 0
             self.current_state = "CRASHED"
             return
 
-        # 2. DACĂ SISTEMUL AI (V2X) ESTE OPRIT DIN BUTON -> MODUL "ȘOFER NEATENT"
         if not ai_global_enabled:
-            # Nu vede animale, nu vede semafoare, nu cedează trecerea.
-            # Pur și simplu merge înainte cu viteza maximă!
             self._recover_speed()
             self.last_ai_decision = None
             return
-
-        # ==========================================
-        # DE AICI ÎN JOS ESTE LOGICA INTELIGENTĂ (CÂND AI ESTE ON)
-        # ==========================================
 
         # 0. URGENȚĂ ABSOLUTĂ: Evitare Animale
         for other_id, other_data in list(self.memory.items()):
@@ -226,7 +205,6 @@ class VehicleAgent:
                 )
 
                 is_in_front = False
-                # REPARAT: Marjă anti-ghosting de 15px ca să nu sară prin ea la 85 km/h!
                 if (
                     self.heading == "EAST"
                     and ox > self.position_x - 15
@@ -257,7 +235,6 @@ class VehicleAgent:
                         (ox - self.position_x) ** 2 + (oy - self.position_y) ** 2
                     )
 
-                    # 1. FIX FANTOME: Verificăm dacă sunt cu adevărat pe același drum
                     angle_diff = abs(
                         (self.visual_angle % 360)
                         - (other_data.get("visual_angle", 0) % 360)
@@ -265,41 +242,36 @@ class VehicleAgent:
                     if angle_diff > 180:
                         angle_diff = 360 - angle_diff
                     if angle_diff > 25.0:
-                        continue  # Ignoră dacă cealaltă mașină se află pe un drum diagonal
+                        continue  
 
-                    # 2. WAZE BYPASS: Dacă mașina din față e lovită, trage stânga pe contrasens!
                     if other_data.get("is_crashed", False) and dist_to_front < 160.0:
                         obstacle_in_front = True
                         self.target_lane_offset = (
-                            80.0  # REPARAT: 80px deviație pentru o bandă întreagă
+                            80.0  
                         )
                         continue
 
-                    # 3. ACC: Frânarea normală pentru trafic
-                    safe_distance = 150.0  # O lăsăm mare ca să o vadă din timp
+                    safe_distance = 150.0  
 
                     if dist_to_front < safe_distance:
                         viteza_lider = other_data.get("speed", 0.0)
 
                         if self.driving_style == "Aggressive":
-                            # AGRESIVUL ignoră complet liderul până la 60px (vine lansat)
                             if dist_to_front > 60.0:
                                 return
 
-                            # La sub 60px pune frână brutală ca să stea în bară
-                            if dist_to_front < 47.0:  # Limita de coliziune
+                            if dist_to_front < 47.0: 
                                 self.speed = max(0.0, viteza_lider - 5.0)
                             else:
                                 if self.speed > viteza_lider:
                                     self.speed = max(
                                         viteza_lider, self.speed - 15.0
-                                    )  # Frână F1!
+                                    )  
                                 else:
                                     self.speed = viteza_lider
                             self.current_state = "BRAKING"
                             return
                         else:
-                            # NORMALUL frânează treptat și calm
                             if dist_to_front < 60.0:
                                 self.speed = max(0.0, viteza_lider - 2.0)
                             else:
@@ -308,11 +280,9 @@ class VehicleAgent:
                             self.current_state = "BRAKING"
                             return
 
-        # Dacă a trecut de obstacol sau nu e niciunul, revine pe banda ei
         if not obstacle_in_front:
             self.target_lane_offset = 0.0
 
-        # 1. VERIFICARE: Am trecut de intersecție?
         is_past = False
         if self.heading == "EAST" and self.position_x > int_x + 50:
             is_past = True
@@ -381,7 +351,6 @@ class VehicleAgent:
             return
 
         # IERARHIA 2: SEMAFOR (V2I)
-        # IERARHIA 2: SEMAFOR (V2I)
         semafor_data = self.memory.get("Semafor_Centru")
         is_light_here = False
         has_green_light = False
@@ -398,18 +367,14 @@ class VehicleAgent:
             time_to_change = semafor_data.get("time_to_change", 5.0)
 
             if culoare_axa_mea == "RED":
-                # NOU: Șoferul agresiv IGNORĂ ajustarea fină (GLOSA) și merge glonț până la 80px de semafor!
                 if self.driving_style == "Aggressive":
                     if dist_to_int < 80.0:
                         self._brake("V2I: Opresc la Semafor ROȘU (Agresiv)")
                         return
-                    # Nu face return! Își continuă accelerația ignorând faptul că e Roșu în depărtare.
                 else:
-                    # Mașinile normale frânează la 120px...
                     if dist_to_int < 120.0:
                         self._brake("V2I: Opresc la Semafor ROȘU")
                         return
-                    # ...și își optimizează viteza de la 400px (GLOSA)
                     elif dist_to_int < 400.0:
                         cadre_ramase = time_to_change * 20
                         if cadre_ramase > 0:
@@ -423,7 +388,6 @@ class VehicleAgent:
                             return
 
             elif culoare_axa_mea == "YELLOW":
-                # NOU: Șoferul agresiv ignoră total semaforul Galben și trece!
                 if self.driving_style == "Aggressive":
                     has_green_light = True
                 else:
@@ -432,7 +396,7 @@ class VehicleAgent:
                         has_green_light = True
                     elif (
                         dist_to_int <= 150.0
-                    ):  # REPARAT: Frânează brusc DOAR dacă e aproape de intersecție!
+                    ):  
                         self._brake("V2I: Opresc la Semafor GALBEN")
                         return
             elif culoare_axa_mea == "GREEN":
@@ -443,12 +407,9 @@ class VehicleAgent:
             self._recover_speed()
             return
 
-        # ==========================================================
-        # IERARHIA 2.5: REFLEX PRIORITATE DE DREAPTA (Elimină bâlbâiala)
-        # ==========================================================
+        # IERARHIA 2.5: REFLEX PRIORITATE DE DREAPTA
         if dist_to_int < 130.0:
             for other_id, other_data in list(self.memory.items()):
-                # Ignorăm semafoarele în această buclă
                 if other_data.get("vehicle_type") == "Infrastructure":
                     continue
 
@@ -456,11 +417,9 @@ class VehicleAgent:
                 oy = other_data.get("position_y", 0)
                 other_dist_to_int = math.sqrt((ox - int_x) ** 2 + (oy - int_y) ** 2)
 
-                # Dacă și cealaltă mașină se află la sub 130px de ACEEAȘI intersecție ca tine
                 if other_dist_to_int < 130.0:
                     oh = other_data.get("heading", "")
 
-                    # Verificăm matematic dacă el vine din dreapta ta
                     vine_din_dreapta = False
                     if self.heading == "NORTH" and oh == "WEST":
                         vine_din_dreapta = True
@@ -471,7 +430,6 @@ class VehicleAgent:
                     elif self.heading == "WEST" and oh == "SOUTH":
                         vine_din_dreapta = True
 
-                    # Ambulanțele au prioritate absolută
                     if (
                         other_data.get("vehicle_type") == "Ambulance"
                         and self.vehicle_type != "Ambulance"
@@ -479,8 +437,6 @@ class VehicleAgent:
                         vine_din_dreapta = True
 
                     if vine_din_dreapta:
-                        # FOARTE IMPORTANT: Verificăm dacă celălalt a traversat DEJA centrul intersecției
-                        # Dacă a trecut, nu mai e pericol, deci nu mai stăm opriți!
                         trecut_de_centru = False
                         if oh == "WEST" and ox < int_x - 20:
                             trecut_de_centru = True
@@ -492,15 +448,13 @@ class VehicleAgent:
                             trecut_de_centru = True
 
                         if not trecut_de_centru:
-                            # Cedează trecerea fluid: frânăm progresiv până la linia de Stop imaginară (45px)
                             if dist_to_int > 45.0:
                                 self.speed = max(0.0, self.speed - 3.5)
                             else:
-                                self.speed = 0.0  # Oprește complet și așteaptă
+                                self.speed = 0.0 
 
                             self._brake(f"Prioritate de dreapta pentru {other_id}")
-                            return  # Blocăm accelerația până trece mașina!
-        # ==========================================================
+                            return 
 
         # IERARHIA 3A: ZIPPER MERGE
         if abs(int_x - 770) < 20 and abs(int_y - 455) < 20:
@@ -610,20 +564,17 @@ class VehicleAgent:
 
     def _brake(self, reason):
         self.current_state = "BRAKING"
-        # NOU: Frână bruscă sportivă pentru Agresivi (-6.0), frână lină pentru restul (-4.5)
         decel_rate = 6.0 if self.driving_style == "Aggressive" else 4.5
         self.speed = max(0, self.speed - decel_rate)
 
     def _recover_speed(self):
         self.current_state = "CRUISE"
-        # NOU: Demaraj în forță pentru Agresivi (+4.0), demaraj lent pentru restul (+2.0)
         accel_rate = 4.0 if self.driving_style == "Aggressive" else 2.0
         if self.speed < self.desired_speed:
             self.speed = min(self.desired_speed, self.speed + accel_rate)
 
     def _negotiate_ai(self, other_id, other_data):
         if self.waiting_for_ai:
-            # Conducere Defensivă în timpul deciziei AI
             self.speed = max(0, self.speed - 2.0)
             return
 
@@ -664,13 +615,10 @@ class VehicleAgent:
 
         threading.Thread(target=ai_task, daemon=True).start()
 
-    # ==========================================
-    # FUNCȚIILE NOI DE MIȘCARE PE GRAF
     def update_position(self, dt):
         if self.speed <= 0:
             return
 
-        # 1. Deplasarea pe șina de bază (Ghidajul rutei)
         if self.current_node_index >= len(self.route) - 1:
             angle_rad = math.radians(self.visual_angle)
             self.base_x += self.speed * dt * math.cos(angle_rad)
@@ -703,7 +651,7 @@ class VehicleAgent:
         else:
             self.heading = "WEST"
 
-        viteză_virare = 55.0  # REPARAT: Trage de volan mai repede pentru a face depășirea largă în timp util
+        viteză_virare = 55.0 
 
         if self.current_lane_offset < self.target_lane_offset:
             self.current_lane_offset += viteză_virare * dt
@@ -714,29 +662,24 @@ class VehicleAgent:
             if self.current_lane_offset < self.target_lane_offset:
                 self.current_lane_offset = self.target_lane_offset
 
-        # 3. Calculăm poziția fizică (Aplicăm offset-ul perpendicular pe șina de bază)
         angle_rad = math.radians(self.visual_angle)
-        perp_angle = angle_rad - math.pi / 2  # Perpendicular la stânga (contrasens)
+        perp_angle = angle_rad - math.pi / 2 
 
         self.position_x = self.base_x + math.cos(perp_angle) * self.current_lane_offset
         self.position_y = self.base_y + math.sin(perp_angle) * self.current_lane_offset
 
-        # ==========================================
         # CLOUD TELEMETRY: Trimitem datele spre Docker (Grafana)
-        # ==========================================
-        # Trimitem date o dată la ~1 secundă (ca să nu facem spam pe rețea)
         if hasattr(self, "last_telemetry_time"):
             if time.time() - self.last_telemetry_time < 1.0:
                 return
         self.last_telemetry_time = time.time()
 
-        # Formatăm datele pentru baza de date InfluxDB
+        # InfluxDB
         is_braking = 1 if self.current_state == "BRAKING" else 0
         data_string = f"vehicle_stats,agent_id={self.agent_id} speed={self.speed},braking={is_braking}"
 
         headers = {"Authorization": "Token super-secret-auth-token"}
 
-        # Trimitem pe un thread separat ca să nu agățăm interfața grafică Pygame
         def send_to_cloud():
             try:
                 requests.post(
@@ -746,13 +689,11 @@ class VehicleAgent:
                     timeout=0.5,
                 )
             except:
-                pass  # Dacă Docker-ul e oprit, ignorăm eroarea și mașina merge mai departe
+                pass 
 
         threading.Thread(target=send_to_cloud, daemon=True).start()
 
     def _update_heading_and_turn(self):
-        # CALCUL PERFECT AL INTENȚIEI DE VIRAJ:
-        # Ne uităm la traseul viitor pentru a anticipa virajul cu un nod înainte!
         idx = self.current_node_index
         if idx < len(self.route) - 2:
             p_curr = nodes[self.route[idx]]

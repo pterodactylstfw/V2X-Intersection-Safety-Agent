@@ -28,7 +28,6 @@ class DataFeeder:
         self.broker = broker
         self.file_path = file_path
         self.scenario_data = []
-        # Stocăm referințele către obiectele mașinilor (agenții AI)
         self.agents = agents_dict or {}
 
     def load_scenario(self):
@@ -46,14 +45,10 @@ class DataFeeder:
                     agent = self.agents[agent_id]
 
                     if agent.has_decided_to_brake():
-                        # DACĂ FRÂNEAZĂ: AI-ul preia controlul și calculează noua poziție
                         agent.update_position(delay_seconds, 400, 400)
                         final_data = agent.get_emergency_status()
                     else:
-                        # DACĂ MERGE NORMAL: Folosim datele din JSON
                         final_data = vehicle_data
-                        # CRUCIAL: Sincronizăm poziția internă a agentului cu JSON-ul
-                        # Astfel, AI-ul "știe" unde se află pe măsură ce se mișcă
                         agent.position_x = vehicle_data["position_x"]
                         agent.position_y = vehicle_data["position_y"]
                         agent.speed = vehicle_data["speed"]
