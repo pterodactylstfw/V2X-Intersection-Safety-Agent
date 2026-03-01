@@ -358,8 +358,6 @@ class VehicleAgent:
                     self._brake("V2I: Opresc la Semafor GALBEN")
                     return
             elif culoare_axa_mea == "GREEN":
-                # FIX 2: Am scos frânarea preventivă enervantă pe verde.
-                # Dacă ai verde, pur și simplu mergi! Sistemul te va opri corect doar când se face galben.
                 has_green_light = True
 
         if has_green_light:
@@ -429,6 +427,12 @@ class VehicleAgent:
             ox, oy = other_data.get("position_x", 0), other_data.get("position_y", 0)
             oh = other_data.get("heading", "")
 
+            # Ignorăm mașinile care merg perfect paralel
+            if (self.heading in ["NORTH", "SOUTH"] and oh in ["NORTH", "SOUTH"]) or (
+                self.heading in ["EAST", "WEST"] and oh in ["EAST", "WEST"]
+            ):
+                continue
+
             other_past = False
             if oh == "SOUTH" and oy > int_y + 40:
                 other_past = True
@@ -445,12 +449,10 @@ class VehicleAgent:
             o_dist = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
 
             if o_dist < 350.0:
-                # FIX 3: Calculăm Timpul până la Coliziune (TTC) pentru ambele mașini
                 my_ttc = dist_to_int / max(self.speed, 1.0)
                 o_ttc = o_dist / max(other_data.get("speed", 0), 1.0)
 
-                # Dăm prioritate DOAR dacă ajungem în intersecție aproximativ în același timp (fereastră de 3.5 sec)
-                # SAU dacă celălalt e deja oprit la buza intersecției (o_dist < 80.0)
+                # Dăm prioritate DOAR dacă ajungem în intersecție aproximativ în același timp
                 if abs(my_ttc - o_ttc) < 3.5 or o_dist < 80.0:
                     conflict_detected = True
 
@@ -462,6 +464,14 @@ class VehicleAgent:
                     }
 
                     if yields_to.get(self.heading) == oh:
+                        # ==============================================================
+                        # FIX MAJOR: O mașină care virează la dreapta NU taie calea mașinii
+                        # care vine din dreapta ei (intră direct pe bandă). Deci își vede de drum!
+                        # Acest fix rezolvă perfect blocajul mașinilor de pe diagonală!
+                        # ==============================================================
+                        if self.turn_intent == "TURN_RIGHT":
+                            continue
+
                         if dist_to_int > 90.0:
                             self.speed = max(1.5, self.speed - 0.5)
                             self.current_state = "BRAKING"
@@ -492,8 +502,7 @@ class VehicleAgent:
 
     def _negotiate_ai(self, other_id, other_data):
         if self.waiting_for_ai:
-            # FIX: Cât timp AI-ul se gândește în fundal (aprox 1 secundă),
-            # mașina ia piciorul de pe accelerație și pune frână preventiv (Conducere Defensivă)
+            # Conducere Defensivă în timpul deciziei AI
             self.speed = max(0, self.speed - 2.0)
             return
 
@@ -502,7 +511,6 @@ class VehicleAgent:
             current_time - self.last_ai_call_time < self.decision_cooldown
         ):
             if "FRANEAZA" in self.last_ai_decision:
-                # Frânăm decisiv pentru a lăsa mașina din dreapta să treacă
                 self.speed = max(0, self.speed - 5.0)
             else:
                 self._recover_speed()
@@ -548,30 +556,27 @@ class VehicleAgent:
             self.position_y += self.speed * dt * math.sin(angle_rad)
             return
 
-        # 1. Luăm coordonatele URMĂTORULUI nod țintă
         next_node_name = self.route[self.current_node_index + 1]
         tx, ty = nodes[next_node_name]
 
-        # 2. Calculăm distanța până la țintă
         dist = math.sqrt((tx - self.position_x) ** 2 + (ty - self.position_y) ** 2)
 
-        # 3. Verificăm dacă am ajuns la nod (logica existentă)
         if dist < 5.0:
             self.current_node_index += 1
             if self.current_node_index >= len(self.route) - 1:
                 return
 
-        # 4. CALCULĂM UNGHIUL EXACT DE DEPLASARE (Rotația Continuă)
-        angle_rad = math.atan2(ty - self.position_y, tx - self.position_x)
+            self._update_heading_and_turn()
 
-        # Convertim în grade (necesar pentru Pygame)
+            next_node_name = self.route[self.current_node_index + 1]
+            tx, ty = nodes[next_node_name]
+
+        angle_rad = math.atan2(ty - self.position_y, tx - self.position_x)
         self.visual_angle = math.degrees(angle_rad)
 
-        # 5. Mișcăm mașina (logica existentă)
         self.position_x += self.speed * dt * math.cos(angle_rad)
         self.position_y += self.speed * dt * math.sin(angle_rad)
 
-        # 6. (Opțional - Păstrăm și heading discret pentru compatibilitate logica AI)
         deg = self.visual_angle
         if -45 <= deg <= 45:
             self.heading = "EAST"
@@ -583,16 +588,16 @@ class VehicleAgent:
             self.heading = "WEST"
 
     def _update_heading_and_turn(self):
-        if (
-            self.current_node_index > 0
-            and self.current_node_index < len(self.route) - 1
-        ):
-            p_prev = nodes[self.route[self.current_node_index - 1]]
-            p_curr = nodes[self.route[self.current_node_index]]
-            p_next = nodes[self.route[self.current_node_index + 1]]
+        # CALCUL PERFECT AL INTENȚIEI DE VIRAJ:
+        # Ne uităm la traseul viitor pentru a anticipa virajul cu un nod înainte!
+        idx = self.current_node_index
+        if idx < len(self.route) - 2:
+            p_curr = nodes[self.route[idx]]
+            p_next = nodes[self.route[idx + 1]]
+            p_next2 = nodes[self.route[idx + 2]]
 
-            angle1 = math.atan2(p_curr[1] - p_prev[1], p_curr[0] - p_prev[0])
-            angle2 = math.atan2(p_next[1] - p_curr[1], p_next[0] - p_curr[0])
+            angle1 = math.atan2(p_next[1] - p_curr[1], p_next[0] - p_curr[0])
+            angle2 = math.atan2(p_next2[1] - p_next[1], p_next2[0] - p_next[0])
             diff = math.degrees(angle2 - angle1)
 
             while diff <= -180:
@@ -624,7 +629,6 @@ class VehicleAgent:
             ),
             "heading": self.heading,
             "timestamp": time.time(),
-            # NOU: Transmitem direct coordonatele intersecției spre care mergem! E infailibil.
             "target_int": self.target_int,
         }
 

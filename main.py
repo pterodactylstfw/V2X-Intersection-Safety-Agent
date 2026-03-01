@@ -1,10 +1,18 @@
 import threading
 import time
+import json
+import random
+from dotenv import load_dotenv
+from langchain_groq import ChatGroq
+from langchain_core.prompts import ChatPromptTemplate
+
 from traffic_light import TrafficLightAgent
 from v2x_network import V2XBroker
 from vehicle_agent import VehicleAgent
 from simulation_ui import SimulationUI
 from animal_obstacle import AnimalObstacle
+
+load_dotenv()
 
 
 def run_simulation():
@@ -22,15 +30,91 @@ def run_simulation():
 
     broker.trigger_animal_event = trigger_animal
 
-    # 2. Agenții (Toți cei 4 conform regulilor de circulație RO)
-
-    # Masina_A: Pleacă de la VEST(0) spre EST(1500), Banda de JOS (420)
-
-    # 2. Agenții
-    # 2. Agenții AI (Folosim parametri numiți pentru a evita erorile de poziție)
-    # 2. Agenții AI (fără parametrul 'speed' care a fost scos de colegul tău)
     # ==========================================
-    # 2. SCENARII DE TESTARE (Haos Controlat)
+    # LOGICA DE SPAWN DINAMIC CU AI (Traffic Director)
+    # ==========================================
+    llm_spawn = ChatGroq(temperature=0.8, model_name="llama-3.1-8b-instant")
+
+    spawn_prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """Ești 'Directorul de Trafic' al unui oraș inteligent. Rolul tău este să generezi un vehicul nou.
+        Intrări valide în oraș: W_START, E_START, S1_START, S2_START, NW_START, NE_ONEWAY_START
+        Ieșiri valide din oraș: W_END, E_END, S1_END, S2_END, NW_END
+        
+        Reguli:
+        1. Alege o intrare și o ieșire care să aibă sens (ex. de la W_START la E_END). Nu alege aceeași parte cardinală.
+        2. Alege o viteză realistă între 55.0 și 75.0.
+        3. Alege tipul vehiculului: 'Normal' sau 'Ambulance' (ai un buget mic de ambulanțe, folosește-le rar).
+        
+        RĂSPUNDE STRICT CU UN JSON VALID, fără niciun alt text, folosind exact acest format:
+        {{"start_node": "...", "target_node": "...", "speed": 65.5, "v_type": "Normal"}}
+        """,
+            ),
+            ("human", "Te rog, trimite un vehicul nou în oraș!"),
+        ]
+    )
+    spawn_chain = spawn_prompt | llm_spawn
+
+    def ai_spawn_car():
+        # Rulăm apelul către AI într-un thread separat ca să nu înghețăm jocul (Pygame)
+        def task():
+            print("🧠 [Traffic Director] Se gândește la un traseu...")
+            try:
+                response = spawn_chain.invoke({})
+
+                # Curățăm textul ca să fim siguri că citim doar JSON-ul
+                raw_content = (
+                    response.content.replace("```json", "").replace("```", "").strip()
+                )
+                data = json.loads(raw_content)
+
+                start_n = data.get("start_node", "W_START")
+                target_n = data.get("target_node", "E_END")
+                speed = float(data.get("speed", 60.0))
+                v_type = data.get("v_type", "Normal")
+
+                new_id = f"AI_Car_{random.randint(100, 999)}"
+                d_style = "Aggressive" if v_type == "Ambulance" else "Cautious"
+
+                agent_nou = VehicleAgent(
+                    agent_id=new_id,
+                    start_node=start_n,
+                    target_node=target_n,
+                    desired_speed=speed,
+                    vehicle_type=v_type,
+                    driving_style=d_style,
+                )
+
+                agenti[new_id] = agent_nou
+                print(
+                    f"✅ [Traffic Director] A creat {new_id} ({v_type})! Traseu: {start_n} -> {target_n} (V: {speed:.1f})"
+                )
+
+            except Exception as e:
+                # Fallback de siguranță dacă AI-ul dă un JSON greșit
+                print(
+                    f"⚠️ [Traffic Director] Eroare format: {e}. Aplic Fallback Random."
+                )
+                rute_fallback = [
+                    ("W_START", "E_END"),
+                    ("NW_START", "S1_END"),
+                    ("S2_START", "W_END"),
+                ]
+                sn, tn = random.choice(rute_fallback)
+                agenti[f"Fallback_{random.randint(10,99)}"] = VehicleAgent(
+                    f"Fallback_{random.randint(10,99)}", sn, tn, 60.0
+                )
+
+        threading.Thread(target=task, daemon=True).start()
+
+    # Legăm butonul de noua funcție AI
+    broker.trigger_spawn_car = ai_spawn_car
+    # ==========================================
+
+    # ==========================================
+    # 2. SCENARII DE TESTARE PREDEFINITE (Haos Controlat)
     # ==========================================
 
     # --- SCENARIUL 1: ACC (Frânare la mașina din față) ---
@@ -142,6 +226,8 @@ def run_simulation():
                 with broker.lock:
                     broker.vehicles_status.pop(caprioara.agent_id, None)
 
+            # Folosim un "list()" în jurul items() pentru a putea modifica (adăuga/șterge)
+            # agenți în timp ce iterăm prin ei
             for a_id, agent in list(agenti.items()):
 
                 agent.memory.clear()
@@ -151,7 +237,6 @@ def run_simulation():
                 for o_id, o_data in traffic.items():
                     agent.receive_v2x_message(o_data)
 
-                # 2. Alegem dinamic CEA MAI APROPIATĂ intersecție
                 # 2. Alegem intersecția către care se îndreaptă mașina BAZAT PE RUTĂ
                 target_int = (agent.position_x, agent.position_y)  # Fallback
 
