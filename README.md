@@ -4,74 +4,75 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.5.6-green.svg)](https://www.pygame.org/)
 [![AI Powered](https://img.shields.io/badge/AI-LLaMA_3.1-orange.svg)]()
 
-Un simulator de trafic autonom de ultimă generație creat pentru a demonstra puterea rețelelor **V2X (Vehicle-to-Everything)** într-un Smart City. Proiectul folosește Inteligență Artificială (LLM) pentru luarea deciziilor în timp real, algoritmi de rutare dinamică și un sistem fizic avansat pentru a simula un trafic fluid, sigur și predictibil.
+Built by **Team Trifecta** (Andaraș Bianca-Diana, Aranyosi Rebeka-Imola, Constantin Raul-Nicolae)
+
+🥈 2nd Place Winning Project
+
+A state-of-the-art autonomous traffic simulator created to demonstrate the power of **V2X (Vehicle-to-Everything)** networks in a Smart City. The project leverages Large Language Models (LLMs) for real-time decision making, dynamic routing algorithms, and an advanced physics engine to simulate fluid, safe, and predictable traffic.
 
 ---
 
-## ✨ Funcționalități Principale
+## ✨ Key Features
 
-- 🧠 **Creier Autonom (AI & V2V):** Mașinile comunică între ele criptat (cu semnătură digitală). Cedează trecerea, negociază la intersecții folosind LLaMA 3.1 și previn coliziunile prin Adaptive Cruise Control (ACC).
-- 🚥 **Infrastructură Inteligentă (V2I - GLOSA):** Semafoarele comunică timpul rămas până la schimbarea culorii. Mașinile își ajustează viteza din timp pentru a prinde "unda verde", reducând emisiile și frânările bruște.
-- 🗺️ **Rerutare Dinamică (Waze-style Bypass):** La detectarea unui accident, vehiculele trec fluid pe contrasens pentru a ocoli obstacolul, revenind apoi pe banda lor.
-- 🦌 **Detecție Animale Sălbatice:** Sistemul reacționează instantaneu la apariția obstacolelor imprevizibile (ex: căprioare pe carosabil), oprind vehiculele în condiții de siguranță.
-- 📊 **C-V2X Command Center (HUD Live):** Dashboard transparent care afișează în timp real telemetria: număr vehicule, viteză medie, rata de pachete (ping) și intervenții AI (frânări salvatoare).
-- 🎭 **Stiluri de Condus:** Suport pentru șoferi "Cautious" (Precauți) și "Aggressive" (Agresivi - ex: Ambulanțe), care forțează intersecțiile și au timpi de reacție diferiți.
+- 🧠 **Autonomous Brain (AI & V2V)**: Vehicles communicate with each other using digitally signed, encrypted packets. They yield, negotiate intersection right-of-way using LLaMA 3.1, and prevent collisions via Adaptive Cruise Control (ACC).
+- 🚥 **Smart Infrastructure (V2I - GLOSA)**: Traffic lights broadcast the remaining time until color changes. Vehicles adjust their speed in advance to catch the "green wave," reducing carbon emissions and harsh braking.
+- 🗺️ **Dynamic Rerouting (Waze-style Bypass)**: Upon detecting an accident ahead, vehicles fluidly switch to the oncoming lane to bypass the obstacle before returning to their original lane.
+- 🦌 **Wildlife Detection**: The system reacts instantly to unpredictable physical obstacles (e.g., deer on the road), executing emergency braking to stop vehicles safely.
+- 📊 **C-V2X Command Center (Live HUD)**: A transparent dashboard displaying real-time telemetry: active vehicle count, average speed, packet rate (ping), and AI interventions (life-saving brakes).
+- 🎭 **Driving Styles**: Support for both "Cautious" and "Aggressive" drivers (e.g., Ambulances), featuring different reaction times and priority forcing.
 
 ---
 
-## 💥 Funcția "AI OFF" (The Hackathon Showcase)
+## 💥 The "AI OFF" Showcase (Hackathon Highlight)
 
 Cea mai importantă demonstrație a simulatorului:
-- **AI ON (Verde):** Sistemul este activ. Mașinile colaborează perfect, ocolesc obstacole, respectă distanța de siguranță și adaptează viteza. Traficul este 100% fluid.
-- **AI OFF (Roșu):** Rețeaua V2X cade. Vehiculele devin simple obiecte care merg "orbește" înainte. Ignoră prioritatea, semafoarele și obstacolele, generând coliziuni în lanț (randate cu efecte de explozie 🔥), demonstrând necesitatea vitală a sistemului nostru.
+- 🟢 **AI ON (Green)**: The V2X system is fully active. Vehicles collaborate perfectly, avoid obstacles, maintain safe distances, and adapt speeds. Traffic is 100% fluid.
+- 🔴 **AI OFF (Red)**: The V2X network goes dark. Vehicles revert to "blind" objects moving rigidly forward. They ignore right-of-way, traffic lights, and obstacles, resulting in chain collisions (rendered with 🔥 explosion effects)—proving the absolute necessity of our V2X architecture.
 
 ---
 
-## 🛠️ Arhitectură și Tehnologii
+## 🛠️ Architecture & Technologies
 
-- **Interfață Grafică:** `Pygame` (Glassmorphism UI, randare antialiased).
-- **Rutare și Grafuri:** Algoritmul Dijkstra prin librăria `NetworkX` pentru navigarea hărții.
-- **LLM / AI:** `LangChain` și `Groq API` (model LLaMA 3.1-8B-Instant) pentru deciziile complexe de prioritate și generarea dinamică a traficului.
-- **Securitate V2X:** Pachete de date hașurate prin `SHA-256` pentru a preveni atacurile de tip *spoofing* în rețeaua auto.
+- **Graphical Interface**: Pygame (Glassmorphism UI, anti-aliased rendering).
+- **Routing & Graphs**: Dijkstra's algorithm via the NetworkX library for map navigation.
+- **LLM / AI**: LangChain and Groq API (LLaMA 3.1-8B-Instant model) for complex right-of-way decisions and dynamic traffic generation.
+- **V2X Security**: Data packets are hashed using SHA-256 to prevent spoofing and cyber attacks on the vehicle network.
 
 ---
 
-## ⚙️ Instalare și Rulare
-
-1. **Clonează repository-ul:**
+## ⚙️ Installation & Running
+1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/](https://github.com/)[nume-utilizator]/[nume-repo].git
-   cd [nume-repo]
+   git clone https://github.com/pterodactylstfw/V2X-Intersection-Safety-Agent.git
+   cd V2X-Intersection-Safety-Agent
    ```
 
-2. **Creează un mediu virtual și instalează dependențele:**
+2. **Create a virtual environment and install dependencies:**
     ```bash
     python -m venv venv
-    source venv/bin/activate  # Pe Windows: venv\Scripts\activate
+    source venv/bin/activate  # Or, on Windows: venv\Scripts\activate
     pip install -r requirements.txt
     ```
-    (Dependențe principale: pygame, networkx, python-dotenv, langchain-groq)
+    (Main dependencies: pygame, networkx, python-dotenv, langchain-groq)
 
-3. **Configurează API Key-ul:**
-Creează un fișier .env în rădăcina proiectului și adaugă cheia de la Groq:
+3. **Configure the API Key:**
+Create a .env file in the root directory and add your Groq API key:
 
     ```fragment
     GROQ_API_KEY=cheia_ta_secreta_aici
     ```
 
-4. **Pornește Simulatorul:**
+4. **Start the Simulator:**
     ```bash
     python main.py
     ```
 
 
-🎮 **Controale Interfață**
-- SISTEM ON/OFF: Oprește infrastructura (semafoarele trec pe galben intermitent).
+🎮 **UI Controls**
+- SYSTEM ON/OFF: Shuts down the city infrastructure (traffic lights switch to flashing yellow).
 
-- AI ON/OFF: Activează/Dezactivează inteligența mașinilor și comunicarea V2X.
+- AI ON/OFF: Toggles the vehicles' V2X communication and AI brains (triggers the chaos mode).
 
-- SPAWN CĂPRIOARĂ: Trimite un animal pe carosabil pentru testarea frânării de urgență.
+- SPAWN DEER: Spawns a wild animal on the road to test the emergency braking systems.
 
-- SPAWN AI CAR: Directorul de trafic analizează harta și introduce dinamic o mașină nouă pentru a evita blocajele.
-
-Echipa: [Trifecta], fondată din membrii Andaraș Bianca-Diana, Aranyosi Rebeka-Imola, Constantin Raul-Nicolae.
+- SPAWN AI CAR: The AI Traffic Director analyzes the map and dynamically spawns a new vehicle to maintain traffic diversity without causing instant gridlocks.
