@@ -4,18 +4,17 @@ import json
 import math
 from map_config import nodes, edges
 
-# --- CONFIGURAȚII ---
 SCREEN_WIDTH = 1500
 SCREEN_HEIGHT = 800
-ROAD_WIDTH_MAIN = 80  # Lățimea drumurilor principale (2 benzi)
-ROAD_WIDTH_SECONDARY = 40  # Lățimea drumurilor secundare (1 bandă)
+ROAD_WIDTH_MAIN = 80  
+ROAD_WIDTH_SECONDARY = 40  
 
-# CULORI MODERNE (Pale / Pastelate pentru interfață)
-COLOR_BACKGROUND = (20, 22, 28)  # Un gri-închis spre albastru, mai plăcut ochiului
+# CULORI 
+COLOR_BACKGROUND = (20, 22, 28)  
 COLOR_ROAD = (55, 58, 70)
 COLOR_LINE = (230, 230, 240)
 COLOR_WALL = (100, 105, 120)
-COLOR_TEXT_UI = (220, 225, 240)  # Text alb-murdar, odihnitor
+COLOR_TEXT_UI = (220, 225, 240)  
 COLOR_TEXT_CAR = (102, 178, 255)
 COLOR_RED = (255, 80, 80)
 COLOR_GREEN = (80, 255, 120)
@@ -24,17 +23,15 @@ COLOR_GRASS = (55, 85, 40)
 COLOR_NORMAL_CAR = (100, 150, 255)
 COLOR_AMBULANCE_CAR = (255, 50, 50)
 
-# --- FUNCTII HELPER MODERNE ---
-
 
 def get_font(size, bold=False):
-    """Încarcă un font de sistem de înaltă calitate (SF Pro sau Arial)."""
+    """Încarcă un font de sistem."""
     fonts = ["sfprodisplay", "arial", "helvetica"]
     return pygame.font.SysFont(fonts, size, bold=bold)
 
 
 def scale_aspect_ratio(image, width):
-    """Scalează o imagine la lățimea dorită, păstrând proporțiile (aspect ratio)."""
+    """Scalează o imagine la lățimea dorită, păstrând aspect ratio."""
     if image is None:
         return None
     original_rect = image.get_rect()
@@ -47,22 +44,17 @@ def draw_modern_button(
     surface, rect, text, font, base_color, text_color=(255, 255, 255), is_hovered=False
 ):
     """
-    Desenează un buton modern, 'glassmorphic', cu degrade, umbră,
-    margini rotunjite și text ANTIALIASED.
+    Desenează un buton modern.
     """
     x, y, w, h = rect
 
-    # 1. Creează suprafața transparentă pentru buton
     btn_surf = pygame.Surface((w, h), pygame.SRCALPHA)
 
-    # Culoarea de bază, ușor transparentă (sticlă)
     alpha = 220 if not is_hovered else 255
     r, g, b = base_color
 
-    # 2. Desenează corpul principal cu margini rotunjite
     pygame.draw.rect(btn_surf, (r, g, b, alpha), (0, 0, w, h), border_radius=10)
 
-    # 3. Adaugă o margine subtilă (Highlighter) sus
     highlight_color = (min(255, r + 30), min(255, g + 30), min(255, b + 30), 150)
     pygame.draw.rect(
         btn_surf,
@@ -72,7 +64,6 @@ def draw_modern_button(
         border_top_right_radius=10,
     )
 
-    # 4. Adaugă o umbră subtilă (Depth) jos
     shadow_color = (max(0, r - 30), max(0, g - 30), max(0, b - 30), 150)
     pygame.draw.rect(
         btn_surf,
@@ -82,23 +73,18 @@ def draw_modern_button(
         border_bottom_right_radius=10,
     )
 
-    # 5. Desenează textul (ANTIALISED = True)
-    # Acesta este secretul unui text clar, nu pixelat!
     is_antialiased = True
     text_surf = font.render(text, is_antialiased, text_color)
 
-    # Centrează textul
     text_rect = text_surf.get_rect(center=(w // 2, h // 2))
     btn_surf.blit(text_surf, text_rect)
 
-    # 6. Blit-uiește butonul terminat pe ecran
     surface.blit(btn_surf, (x, y))
 
 
 class SimulationUI:
     def __init__(self, title="C-V2X Command Center"):
         pygame.init()
-        # Setări anti-aliasing pentru imagini/forme (nu text, acela e în render)
         pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLEBUFFERS, 1)
         pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLESAMPLES, 4)
 
@@ -109,7 +95,6 @@ class SimulationUI:
         pygame.display.set_caption(title)
         self.clock = pygame.time.Clock()
 
-        # NOU: Folosim fonturi de sistem moderne
         self.title_font = get_font(22, bold=True)
         self.font = get_font(18, bold=True)
         self.small_font = get_font(15)
@@ -117,22 +102,21 @@ class SimulationUI:
         self.fps = 60
 
         self.system_on = True
-        self.button_rect = pygame.Rect(20, 20, 160, 45)  # Puțin mai mari butoanele
+        self.button_rect = pygame.Rect(20, 20, 160, 45)  
 
         self.ai_enabled = True
         self.ai_button_rect = pygame.Rect(200, 20, 160, 45)
 
-        # Butonul pentru căprioară
-        self.animal_button_rect = pygame.Rect(20, 80, 160, 40)  # Poziție nouă
+        self.animal_button_rect = pygame.Rect(20, 80, 160, 40)  
 
-        self.spawn_car_button_rect = pygame.Rect(200, 80, 160, 40)  # Poziție nouă
+        self.spawn_car_button_rect = pygame.Rect(200, 80, 160, 40)  
 
         self.DEER_DECOR_POINTS = [
             (1270, 590, "FX"),
             (1330, 565, "N"),
             (1320, 590, "N"),
             (1290, 560, "FX"),
-            (1400, 720, "FX"),
+            (1410, 730, "FX"),
             (1390, 760, "N"),
         ]
 
@@ -140,8 +124,6 @@ class SimulationUI:
         self.COLOR_YELLOW_OFF = (60, 60, 0)
         self.COLOR_GREEN_OFF = (0, 60, 0)
 
-        # REPARAT DEFENSIV: Inițializăm atributele imaginilor cu None
-        # Astfel, funcțiile (ex: draw_indicator) nu vor mai crăpa cu AttributeError
         self.img_normal = None
         self.img_aggressive = None
         self.img_ambulance = None
@@ -155,13 +137,12 @@ class SimulationUI:
                 "images/ambulance.png"
             ).convert_alpha()
 
-            # Imaginea nouă, dar pusă într-un try separat ca să nu blocheze restul
             try:
                 self.img_aggressive = pygame.image.load(
                     "images/car-aggressive.png"
                 ).convert_alpha()
             except:
-                print("⚠️ car-aggressive.png lipsește, folosesc imaginea normală.")
+                print("car-aggressive.png lipsește, folosesc imaginea normală.")
                 self.img_aggressive = self.img_normal
 
             indicator_base = pygame.image.load("images/indicator.png").convert_alpha()
@@ -171,23 +152,21 @@ class SimulationUI:
             self.use_images = True
 
         except Exception as e:
-            print(f"⚠️ Probleme la încărcarea imaginilor principale. Eroare: {e}")
+            print(f"Probleme la încărcarea imaginilor principale. Eroare: {e}")
 
         self.rotation_map = {"EAST": 0, "NORTH": 90, "WEST": 180, "SOUTH": 270}
 
     def draw_indicator(self):
-        # REPARAT: Nu mai crapă dacă imaginea lipsește
         if self.img_indicator is None:
             return
 
-        x1, y1 = 1400, 580  # indicator 1 (sus)
-        x2, y2 = 1300, 700  # indicator 2 (jos)
+        x1, y1 = 1400, 580 
+        x2, y2 = 1300, 700 
         img_left = pygame.transform.rotate(self.img_indicator, 90)
         img_right = pygame.transform.rotate(self.img_indicator, -90)
         self.screen.blit(img_left, (x1, y1))
         self.screen.blit(img_right, (x2, y2))
 
-        # Barele negre
         pygame.draw.rect(self.screen, (0, 0, 0), (1425, 593, 50, 4))
         pygame.draw.rect(self.screen, (0, 0, 0), (1255, 712, 50, 4))
 
@@ -252,7 +231,6 @@ class SimulationUI:
 
     def draw_risk_overlays(self, current_traffic=None):
         for center, degree in self._intersection_centers_and_degree():
-            # Intersecțiile: Auras roșii, opacitate diferită
             if degree >= 8:
                 self.draw_risk_aura(
                     center, radius=85, color_rgb=(255, 0, 0), max_alpha=120
@@ -262,7 +240,6 @@ class SimulationUI:
                     center, radius=70, color_rgb=(255, 0, 0), max_alpha=70
                 )
 
-        # Căprioara: Aura portocalie
         if current_traffic:
             for v in current_traffic.values():
                 if v and v.get("vehicle_type") == "Animal":
@@ -326,9 +303,8 @@ class SimulationUI:
         pygame.draw.polygon(self.screen, COLOR_WALL, [pA, pB, pC, pD])
 
     def draw_environment(self):
-        """Desenează harta clasică, curată, exact ca într-o schiță."""
+        """Desenează harta"""
         self.screen.fill(COLOR_BACKGROUND)
-        # Iarba
         pygame.draw.polygon(
             self.screen,
             COLOR_GRASS,
@@ -340,7 +316,6 @@ class SimulationUI:
             ],
             width=0,
         )
-        # Fundal drum diagonal
         pygame.draw.polygon(
             self.screen,
             COLOR_BACKGROUND,
@@ -348,14 +323,12 @@ class SimulationUI:
             width=0,
         )
 
-        # 1. STRATUL ASFALT: Desenăm fiecare bandă individual
         for u, v, _ in edges:
             p1 = nodes.get(u)
             p2 = nodes.get(v)
             if p1 and p2:
                 pygame.draw.line(self.screen, COLOR_ROAD, p1, p2, ROAD_WIDTH_SECONDARY)
 
-        # DESENARE CLĂDIRI (Ajustate)
         self.draw_building_along_road(
             nodes["W_START"], nodes["I1_SW"], width=50, offset=40, node_offset=100
         )
@@ -388,7 +361,6 @@ class SimulationUI:
             nodes["I3_SE"], nodes["I2_NW"], width=40, offset=40, node_offset=250
         )
 
-        # 2. STRATUL MARCAJE (Linii punctate pe axul drumurilor)
         drawn_dashed = set()
         for u, v, _ in edges:
             if (u, v) in drawn_dashed:
@@ -418,11 +390,10 @@ class SimulationUI:
                     drawn_dashed.add((u2, v2))
                     break
 
-        # Desenare căprioare decorative
         if self.use_images and self.img_deer is not None:
             base = pygame.transform.scale(self.img_deer, (35, 35))
             deer_n = base
-            deer_fx = pygame.transform.flip(base, True, False)  # stânga-dreapta (FX)
+            deer_fx = pygame.transform.flip(base, True, False)  
 
             for x, y, v in self.DEER_DECOR_POINTS:
                 img = deer_n if v == "N" else deer_fx
@@ -490,9 +461,8 @@ class SimulationUI:
         draw_pole(nodes.get("I1_NE"), state_ew, "H", dx=+OFFSET_Y, dy=-OFFSET_X)
 
     def draw_buttons(self, mouse_pos):
-        """Desenează toate butoanele folosind funcția helper modernă."""
+        """Desenează toate butoanele folosind funcția helper."""
 
-        # 1. Buton SISTEM
         c1 = COLOR_GREEN if self.system_on else COLOR_RED
         text1 = "SISTEM: ON" if self.system_on else "SISTEM: OFF"
         h1 = self.button_rect.collidepoint(mouse_pos)
@@ -500,7 +470,6 @@ class SimulationUI:
             self.screen, self.button_rect, text1, self.font, c1, is_hovered=h1
         )
 
-        # 2. Buton AI
         c2 = COLOR_GREEN if self.ai_enabled else COLOR_RED
         text2 = "AI: ON" if self.ai_enabled else "AI: OFF"
         h2 = self.ai_button_rect.collidepoint(mouse_pos)
@@ -508,7 +477,6 @@ class SimulationUI:
             self.screen, self.ai_button_rect, text2, self.font, c2, is_hovered=h2
         )
 
-        # 3. Buton Căprioară
         h3 = self.animal_button_rect.collidepoint(mouse_pos)
         draw_modern_button(
             self.screen,
@@ -519,7 +487,6 @@ class SimulationUI:
             is_hovered=h3,
         )
 
-        # 4. Buton Spawn AI Car
         h4 = self.spawn_car_button_rect.collidepoint(mouse_pos)
         draw_modern_button(
             self.screen,
@@ -539,7 +506,6 @@ class SimulationUI:
         is_crashed = v_data.get("is_crashed", False)
 
         if is_crashed:
-            # Exploziile au și ele nevoie de antialiasing pentru text
             pygame.draw.circle(self.screen, (255, 69, 0), (int(x), int(y)), 25)
             pygame.draw.circle(self.screen, (200, 0, 0), (int(x), int(y)), 15)
 
@@ -551,7 +517,6 @@ class SimulationUI:
             else:
                 pygame.draw.circle(self.screen, (139, 69, 19), (int(x), int(y)), 10)
 
-            # NOU: Text antialiased pentru căprioară
             animal_text = self.small_font.render(v_id, True, (255, 150, 150))
             self.screen.blit(animal_text, (int(x) - 25, int(y) - 30))
             return
@@ -582,7 +547,6 @@ class SimulationUI:
             rect = rotated_img.get_rect(center=(int(x), int(y)))
             self.screen.blit(rotated_img, rect)
         else:
-            # Fallback geometrie
             color = COLOR_AMBULANCE_CAR if v_type == "Ambulance" else COLOR_NORMAL_CAR
             h = 28
             vw, vh = (
@@ -597,7 +561,6 @@ class SimulationUI:
         if priority and (pygame.time.get_ticks() // 200) % 2 == 0:
             pygame.draw.circle(self.screen, (255, 255, 255), (int(x), int(y)), 35, 2)
 
-        # NOU: Toate textele mașinii sunt acum antialiased (render True)
         is_antialiased = True
         id_s = self.font.render(v_id, is_antialiased, COLOR_TEXT_CAR)
         in_s = self.micro_font.render(f"[{intent}]", is_antialiased, COLOR_TEXT_CAR)
@@ -611,12 +574,10 @@ class SimulationUI:
         self.screen.blit(sp_s, (int(x) - 20, int(y) + 25))
 
     def draw_dashboard(self, current_traffic):
-        """Desenează un panou HUD transparent cu statistici live în colțul din dreapta-sus."""
-        # REPARAT DEFENSIV: Dacă nu s-a încărcat dicționarul, ieșim.
+        """Desenează un panou în colțul din dreapta-sus."""
         if current_traffic is None:
             return
 
-        # 1. Calculăm statisticile live
         total_cars, crashed_cars, total_speed, active_brakes, ambulances_active = (
             0,
             0,
@@ -641,11 +602,9 @@ class SimulationUI:
 
         avg_speed = (total_speed / total_cars) if total_cars > 0 else 0.0
 
-        # 2. Creăm suprafața translucidă
         dash_width, dash_height = 280, 240
         hud = pygame.Surface((dash_width, dash_height), pygame.SRCALPHA)
 
-        # Fundal negru cu transparență și contur
         pygame.draw.rect(
             hud, (0, 0, 0, 200), (0, 0, dash_width, dash_height), border_radius=12
         )
@@ -655,14 +614,12 @@ class SimulationUI:
             (0, 0, dash_width, dash_height),
             width=2,
             border_radius=12,
-        )  # Margine clară
+        )  
 
-        # 3. Titlul (Antialiased)
         title = self.title_font.render("● Command Center", True, (255, 215, 0))
         hud.blit(title, (40, 15))
         pygame.draw.line(hud, (100, 150, 255), (15, 42), (dash_width - 15, 42), 2)
 
-        # 4. Randăm datele (toate Antialiased render = True)
         is_aa = True
         y_offset, spacing = 55, 23
         text_w = (255, 255, 255)
@@ -719,7 +676,6 @@ class SimulationUI:
             )
         y_offset += spacing
 
-        # Linie rețea
         pygame.draw.line(
             hud, (100, 100, 100), (15, y_offset), (dash_width - 15, y_offset), 1
         )
@@ -743,14 +699,12 @@ class SimulationUI:
             (15, y_offset),
         )
 
-        # 5. Afișăm pe ecran (dreapta sus)
         self.screen.blit(hud, (SCREEN_WIDTH - dash_width - 20, 20))
 
     def start(self, broker):
         running = True
         print("Simularea UI a început. Harta rețea (grilă).")
         while running:
-            # Adăugăm mouse_pos pentru efectul de hover pe butoane
             mouse_pos = pygame.mouse.get_pos()
 
             for event in pygame.event.get():
@@ -779,7 +733,6 @@ class SimulationUI:
                             broker.trigger_spawn_car()
 
             self.draw_environment()
-            # Actualizat: Desenăm butoanele folosind funcția modernă
             self.draw_buttons(mouse_pos)
             self.draw_indicator()
 
@@ -799,7 +752,6 @@ class SimulationUI:
             for v_data in current_traffic.values():
                 self.render_vehicle(v_data)
 
-            # NOU: Desenăm dashboard-ul extins
             self.draw_dashboard(current_traffic)
 
             pygame.display.flip()
