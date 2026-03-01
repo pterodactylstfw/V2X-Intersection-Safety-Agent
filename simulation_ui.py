@@ -43,7 +43,14 @@ class SimulationUI:
 
         # NOU: Butonul pentru căprioară (sub cel de sistem)
         self.animal_button_rect = pygame.Rect(20, 70, 150, 40)
-        self.DEER_DECOR_POINTS = [(1270, 590), (1330, 565), (1320, 590), (1290, 560), (1400, 730), (1390, 760)]
+        self.DEER_DECOR_POINTS = [
+            (1270, 590),
+            (1330, 565),
+            (1320, 590),
+            (1290, 560),
+            (1400, 730),
+            (1390, 760),
+        ]
 
         self.COLOR_RED_OFF = (60, 0, 0)
         self.COLOR_YELLOW_OFF = (60, 60, 0)
@@ -64,18 +71,18 @@ class SimulationUI:
         self.rotation_map = {"EAST": 0, "NORTH": 90, "WEST": 180, "SOUTH": 270}
 
     def draw_indicator(self):
-        x1, y1 = 1400, 580          # indicator 1 (sus)
-        x2, y2 = 1300, 700          # indicator 2 (jos) 
+        x1, y1 = 1400, 580  # indicator 1 (sus)
+        x2, y2 = 1300, 700  # indicator 2 (jos)
 
-        # Rotiri 
+        # Rotiri
         img_left = pygame.transform.rotate(self.img_indicator, 90)
         img_right = pygame.transform.rotate(self.img_indicator, -90)
 
-        # Desenare imagini 
+        # Desenare imagini
         self.screen.blit(img_left, (x1, y1))
         self.screen.blit(img_right, (x2, y2))
 
-        # Două dreptunghiuri subțiri 
+        # Două dreptunghiuri subțiri
         pygame.draw.rect(self.screen, (0, 0, 0), (1425, 593, 50, 4))  # bară 1
         pygame.draw.rect(self.screen, (0, 0, 0), (1255, 712, 50, 4))  # bară 2
 
@@ -107,7 +114,7 @@ class SimulationUI:
             return False
         x, y = v_data.get("position_x", 0), v_data.get("position_y", 0)
         return x < -50 or x > SCREEN_WIDTH + 50 or y < -50 or y > SCREEN_HEIGHT + 50
-    
+
     def draw_risk_aura(self, center, radius, color_rgb, max_alpha=120, rings=6):
         """
         Desenează un glow circular (aura) în jurul unui punct.
@@ -161,15 +168,21 @@ class SimulationUI:
 
             results.append(((cx, cy), degree))
         return results
-    
+
     def draw_risk_overlays(self, current_traffic=None):
         # 1) intersecții: 4 ramuri = roșu intens, 3 ramuri = roșu mai soft
         for center, degree in self._intersection_centers_and_degree():
             # praguri simple: ajustează după ce vezi “degree” în practică
-            if degree >= 8:  # de obicei intersecțiile “mari” au mai multe intrări/ieșiri în graf
-                self.draw_risk_aura(center, radius=85, color_rgb=(255, 0, 0), max_alpha=140)
+            if (
+                degree >= 8
+            ):  # de obicei intersecțiile “mari” au mai multe intrări/ieșiri în graf
+                self.draw_risk_aura(
+                    center, radius=85, color_rgb=(255, 0, 0), max_alpha=140
+                )
             else:
-                self.draw_risk_aura(center, radius=70, color_rgb=(255, 0, 0), max_alpha=85)
+                self.draw_risk_aura(
+                    center, radius=70, color_rgb=(255, 0, 0), max_alpha=85
+                )
 
         # 2) căprioară: portocaliu, dacă există în trafic
         if current_traffic:
@@ -177,7 +190,9 @@ class SimulationUI:
                 if v and v.get("vehicle_type") == "Animal":
                     x = v.get("position_x", 0)
                     y = v.get("position_y", 0)
-                    self.draw_risk_aura((x, y), radius=40, color_rgb=(255, 140, 0), max_alpha=110)
+                    self.draw_risk_aura(
+                        (x, y), radius=40, color_rgb=(255, 140, 0), max_alpha=110
+                    )
 
     def draw_dashed_line_segment(
         self, p1, p2, color, dash_length=15, gap_length=10, offset=0
@@ -369,14 +384,13 @@ class SimulationUI:
         # la finalul draw_environment()
         if self.use_images and hasattr(self, "img_deer"):
             deer_scaled = pygame.transform.scale(self.img_deer, (35, 35))
-            for (x, y) in self.DEER_DECOR_POINTS:
+            for x, y in self.DEER_DECOR_POINTS:
                 rect = deer_scaled.get_rect(center=(int(x), int(y)))
                 self.screen.blit(deer_scaled, rect)
         else:
             # fallback dacă nu ai imagine
-            for (x, y) in getattr(self, "DEER_DECOR_POINTS", []):
+            for x, y in getattr(self, "DEER_DECOR_POINTS", []):
                 pygame.draw.circle(self.screen, (139, 69, 19), (int(x), int(y)), 8)
-                    
 
     def draw_traffic_light_agent(self, current_traffic):
         """Semafoare la Intersecția 1 (Stânga-Jos)."""

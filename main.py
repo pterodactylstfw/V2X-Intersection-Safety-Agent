@@ -1,3 +1,4 @@
+import math
 import threading
 import time
 import json
@@ -225,6 +226,22 @@ def run_simulation():
                 # Dacă e ascunsă, ne asigurăm că e ștearsă din rețea ca să nu dea eroare
                 with broker.lock:
                     broker.vehicles_status.pop(caprioara.agent_id, None)
+
+            agent_ids = list(agenti.keys())
+            for i in range(len(agent_ids)):
+                for j in range(i + 1, len(agent_ids)):
+                    a1 = agenti[agent_ids[i]]
+                    a2 = agenti[agent_ids[j]]
+                    dist = math.sqrt(
+                        (a1.position_x - a2.position_x) ** 2
+                        + (a1.position_y - a2.position_y) ** 2
+                    )
+                    if dist < 18 and not broker.ai_enabled:
+                        a1.is_crashed = True
+                        a2.is_crashed = True
+                        print(
+                            f"💥 ACCIDENT REALE: {a1.agent_id} s-a lovit de {a2.agent_id}!"
+                        )
 
             # Folosim un "list()" în jurul items() pentru a putea modifica (adăuga/șterge)
             # agenți în timp ce iterăm prin ei

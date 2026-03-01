@@ -50,6 +50,7 @@ class VehicleAgent:
         self.waiting_for_ai = False
         self.visual_angle = 0.0
         self.target_int = (0, 0)  # Salvăm intersecția țintă pentru V2X
+        self.is_crashed = False
 
         # --- NOU: 1. GENERAREA RUTEI (Dijkstra) ---
         self.graph = nx.DiGraph()
@@ -164,6 +165,24 @@ class VehicleAgent:
         # Dacă a trecut de toate cele 3 filtre, abia acum îl salvăm în memorie!
         self.memory[sender_id] = message
 
+    def decide_action(self, int_x, int_y, ai_global_enabled=True):
+        self.target_int = (int_x, int_y)
+
+        # DACĂ MAȘINA ESTE LOVITĂ, NU MAI FACE NIMIC
+        if getattr(self, "is_crashed", False):
+            self.speed = 0
+            self.current_state = "CRASHED"
+            return
+
+        # --- NOU: LOGICA DE DEZACTIVARE AI ---
+        if not ai_global_enabled:
+            # Dacă AI e OFF, mașina ignoră tot (ACC, Semafor, V2V)
+            # Pur și simplu merge cu viteza ei setată (haos)
+            self._recover_speed()
+            self.last_ai_decision = None
+            self.current_state = "CRUISE"  # Resetăm starea de frânare
+            return
+
     def calculate_ttc(self, target_x, target_y):
         if self.speed < 1.0:
             return 999
@@ -175,6 +194,10 @@ class VehicleAgent:
     def decide_action(self, int_x, int_y):
         self.target_int = (int_x, int_y)  # O salvăm ca să o dăm mai departe în V2X
 
+        if self.is_crashed:
+            self.speed = 0
+            self.current_state = "CRASHED"
+            return
         # ==========================================
         # 0. URGENȚĂ ABSOLUTĂ: Evitare Animale (TREBUIE SĂ FIE PRIMA!)
         # ==========================================
@@ -623,10 +646,15 @@ class VehicleAgent:
             "vehicle_type": self.vehicle_type,
             "visual_angle": self.visual_angle,
             "intent": (
-                self.current_state
-                if self.current_state != "CRUISE"
-                else self.turn_intent
+                "CRASHED"
+                if self.is_crashed
+                else (
+                    self.current_state
+                    if self.current_state != "CRUISE"
+                    else self.turn_intent
+                )
             ),
+            "is_crashed": self.is_crashed,
             "heading": self.heading,
             "timestamp": time.time(),
             "target_int": self.target_int,
