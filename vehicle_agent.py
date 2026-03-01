@@ -253,15 +253,19 @@ class VehicleAgent:
                         (ox - self.position_x) ** 2 + (oy - self.position_y) ** 2
                     )
 
-                    # NOU: Dacă mașina din față a făcut accident, o ocolim pe contrasens!
-                    if other_data.get("is_crashed", False) and dist_to_front < 160.0:
-                        obstacle_in_front = True
-                        self.target_lane_offset = (
-                            45.0  # Intră pe contrasens (45px deviație)
-                        )
-                        continue  # Sari peste logica de frânare ca să poată avansa!
+                    # NOU REPARAT: Verificăm dacă sunt cu adevărat pe același drum (unghi vizual similar)
+                    angle_diff = abs(
+                        (self.visual_angle % 360)
+                        - (other_data.get("visual_angle", 0) % 360)
+                    )
+                    if angle_diff > 180:
+                        angle_diff = 360 - angle_diff
+                    if angle_diff > 25.0:
+                        continue  # Ignoră dacă cealaltă mașină se află pe un drum diagonal
 
+                    # NOU: Distanță de siguranță micșorată pentru șoferii agresivi
                     safe_distance = 55.0 if self.driving_style == "Aggressive" else 90.0
+
                     if dist_to_front < safe_distance:
                         self._brake(f"ACC: Frânez pt {other_id}")
                         return
@@ -367,9 +371,13 @@ class VehicleAgent:
                         viteza_optima = min(
                             self.desired_speed, max(1.0, dist_to_int / cadre_ramase)
                         )
+                        # GLOSA Perfect: Ajustează viteza lin ca să ajungă când se face verde
                         if self.speed > viteza_optima:
                             self.speed = max(viteza_optima, self.speed - 0.2)
-                            return
+                        elif self.speed < viteza_optima:
+                            self.speed = min(viteza_optima, self.speed + 1.0)
+                        return  # OBLIGATORIU: Returnăm ca să nu accelereze din greșeală mai jos
+
             elif culoare_axa_mea == "YELLOW":
                 # NOU: Șoferul agresiv ignoră total semaforul Galben și trece!
                 if self.driving_style == "Aggressive":
@@ -378,9 +386,9 @@ class VehicleAgent:
                     timp_pana_la_centru = dist_to_int / max(self.speed, 1.0)
                     if timp_pana_la_centru <= time_to_change + 0.5:
                         has_green_light = True
-                    elif dist_to_int > 120.0 or (
-                        dist_to_int > 60.0 and self.speed < 1.0
-                    ):
+                    elif (
+                        dist_to_int <= 150.0
+                    ):  # REPARAT: Frânează brusc DOAR dacă e aproape de intersecție!
                         self._brake("V2I: Opresc la Semafor GALBEN")
                         return
             elif culoare_axa_mea == "GREEN":

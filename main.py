@@ -275,8 +275,10 @@ def run_simulation():
                         + (a1.position_y - caprioara.position_y) ** 2
                     )
                     # Hitbox de 25px pentru căprioară. Se lovește doar dacă AI e oprit!
+
                     if dist_animal < 25 and not getattr(broker, "ai_enabled", True):
                         a1.is_crashed = True
+                        caprioara.state = "CRASHED"  # NOU: Omorâm și căprioara!
                         print(f"🦌💥 ACCIDENT: {a1.agent_id} a lovit căprioara!")
 
                 # --- 2. Coliziune între mașini ---

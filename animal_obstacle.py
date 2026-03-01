@@ -13,7 +13,8 @@ class AnimalObstacle:
 
     def trigger(self):
         """Declanșat de butonul din UI."""
-        if self.state == "HIDDEN":
+        # O putem chema din nou chiar dacă e "moartă" (CRASHED) pe stradă
+        if self.state in ["HIDDEN", "CRASHED"]:
             self.position_y = self.start_y  # O resetăm la poziția inițială
             self.state = "CROSSING"
 
@@ -27,15 +28,17 @@ class AnimalObstacle:
                 self.state = "HIDDEN"
 
     def get_status(self):
-        # Publicăm poziția ei în rețea DOAR dacă este pe stradă
-        if self.state == "CROSSING":
+        # Publicăm poziția ei în rețea DOAR dacă este pe stradă sau LOVITĂ
+        if self.state in ["CROSSING", "CRASHED"]:
             return {
                 "agent_id": self.agent_id,
                 "position_x": self.position_x,
                 "position_y": self.position_y,
-                "speed": self.speed,
+                "speed": self.speed if self.state != "CRASHED" else 0.0,
                 "vehicle_type": "Animal",
                 "heading": "CROSSING",
                 "intent": "JUMPING",
+                "is_crashed": self.state
+                == "CRASHED",  # NOU: UI-ul va ști să deseneze focul
             }
         return None
