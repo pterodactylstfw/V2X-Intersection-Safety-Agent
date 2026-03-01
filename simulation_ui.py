@@ -150,22 +150,24 @@ class SimulationUI:
         self.use_images = False
 
         try:
-            self.img_normal = pygame.image.load("car.png").convert_alpha()
-            self.img_ambulance = pygame.image.load("ambulance.png").convert_alpha()
+            self.img_normal = pygame.image.load("images/car.png").convert_alpha()
+            self.img_ambulance = pygame.image.load(
+                "images/ambulance.png"
+            ).convert_alpha()
 
             # Imaginea nouă, dar pusă într-un try separat ca să nu blocheze restul
             try:
                 self.img_aggressive = pygame.image.load(
-                    "car-aggressive.png"
+                    "images/car-aggressive.png"
                 ).convert_alpha()
             except:
                 print("⚠️ car-aggressive.png lipsește, folosesc imaginea normală.")
                 self.img_aggressive = self.img_normal
 
-            indicator_base = pygame.image.load("indicator.png").convert_alpha()
+            indicator_base = pygame.image.load("images/indicator.png").convert_alpha()
             self.img_indicator = pygame.transform.scale(indicator_base, (30, 30))
 
-            self.img_deer = pygame.image.load("deer.png").convert_alpha()
+            self.img_deer = pygame.image.load("images/deer.png").convert_alpha()
             self.use_images = True
 
         except Exception as e:
@@ -663,7 +665,7 @@ class SimulationUI:
 
         hud.blit(
             self.small_font.render(
-                f"🚗 Vehicule conectate: {total_cars}", is_aa, text_w
+                f"● Vehicule conectate: {total_cars}", is_aa, text_w
             ),
             (15, y_offset),
         )
@@ -676,14 +678,14 @@ class SimulationUI:
         )
         hud.blit(
             self.small_font.render(
-                f"⏱️ Viteza medie: {avg_speed:.1f} km/h", is_aa, speed_color
+                f"● Viteza medie: {avg_speed:.1f} km/h", is_aa, speed_color
             ),
             (15, y_offset),
         )
         y_offset += spacing
         hud.blit(
             self.small_font.render(
-                f"🛡️ Intervenții AI active: {active_brakes}", is_aa, (100, 200, 255)
+                f"● Intervenții AI active: {active_brakes}", is_aa, (100, 200, 255)
             ),
             (15, y_offset),
         )
@@ -692,7 +694,7 @@ class SimulationUI:
         crash_color = (255, 80, 80) if crashed_cars > 0 else (100, 255, 100)
         hud.blit(
             self.small_font.render(
-                f"💥 Accidente detectate: {crashed_cars}", is_aa, crash_color
+                f"● Accidente detectate: {crashed_cars}", is_aa, crash_color
             ),
             (15, y_offset),
         )
@@ -702,13 +704,13 @@ class SimulationUI:
             if (pygame.time.get_ticks() // 300) % 2 == 0:
                 hud.blit(
                     self.small_font.render(
-                        f"🚨 URGENȚĂ: Culoar verde!", is_aa, (255, 50, 50)
+                        f"● URGENȚĂ: Culoar verde!", is_aa, (255, 50, 50)
                     ),
                     (15, y_offset),
                 )
         else:
             hud.blit(
-                self.small_font.render(f"✅ Trafic normal", is_aa, (150, 150, 150)),
+                self.small_font.render(f"● Trafic normal", is_aa, (150, 150, 150)),
                 (15, y_offset),
             )
         y_offset += spacing
@@ -727,7 +729,7 @@ class SimulationUI:
         lat = 12 + (pygame.time.get_ticks() % 5) if self.ai_enabled else 999
         msg = total_cars * 20 if self.ai_enabled else 0
         hud.blit(
-            self.micro_font.render(f"📡 Rețea: {v2x_st}", is_aa, v2x_co), (15, y_offset)
+            self.micro_font.render(f"● Rețea: {v2x_st}", is_aa, v2x_co), (15, y_offset)
         )
         y_offset += 20
         hud.blit(

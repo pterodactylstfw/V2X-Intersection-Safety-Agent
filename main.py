@@ -156,7 +156,7 @@ def run_simulation():
         agent_id="Masina_Lider",
         start_node="W_START",
         target_node="E_END",
-        desired_speed=35.0,  # Merge încet
+        desired_speed=34.0,  # Merge încet
     )
 
     agent_urmaritor = VehicleAgent(

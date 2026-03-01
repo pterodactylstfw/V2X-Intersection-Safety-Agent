@@ -9,10 +9,10 @@ services:
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=hackathon2026
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD}
       - DOCKER_INFLUXDB_INIT_ORG=v2x_org
       - DOCKER_INFLUXDB_INIT_BUCKET=telemetry
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=super-secret-auth-token
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN}
 
   grafana:
     image: grafana/grafana:latest
@@ -21,6 +21,6 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
     depends_on:
       - influxdb
