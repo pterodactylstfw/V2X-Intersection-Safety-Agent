@@ -43,6 +43,7 @@ class SimulationUI:
 
         # NOU: Butonul pentru căprioară (sub cel de sistem)
         self.animal_button_rect = pygame.Rect(20, 70, 150, 40)
+        self.DEER_DECOR_POINTS = [(1270, 590), (1330, 565), (1320, 590), (1290, 560), (1400, 730), (1390, 760)]
 
         self.COLOR_RED_OFF = (60, 0, 0)
         self.COLOR_YELLOW_OFF = (60, 60, 0)
@@ -51,6 +52,8 @@ class SimulationUI:
         try:
             self.img_normal = pygame.image.load("car.png").convert_alpha()
             self.img_ambulance = pygame.image.load("ambulance.png").convert_alpha()
+            self.img_indicator = pygame.image.load("indicator.png").convert_alpha()
+            self.img_indicator = pygame.transform.scale(self.img_indicator, (30, 30))
             # NOU: Încărcăm poza cu căprioara
             self.img_deer = pygame.image.load("deer.png").convert_alpha()
             self.use_images = True
@@ -59,6 +62,22 @@ class SimulationUI:
             self.use_images = False
 
         self.rotation_map = {"EAST": 0, "NORTH": 90, "WEST": 180, "SOUTH": 270}
+
+    def draw_indicator(self):
+        x1, y1 = 1400, 580          # indicator 1 (sus)
+        x2, y2 = 1300, 700          # indicator 2 (jos) 
+
+        # Rotiri 
+        img_left = pygame.transform.rotate(self.img_indicator, 90)
+        img_right = pygame.transform.rotate(self.img_indicator, -90)
+
+        # Desenare imagini 
+        self.screen.blit(img_left, (x1, y1))
+        self.screen.blit(img_right, (x2, y2))
+
+        # Două dreptunghiuri subțiri 
+        pygame.draw.rect(self.screen, (0, 0, 0), (1425, 593, 50, 4))  # bară 1
+        pygame.draw.rect(self.screen, (0, 0, 0), (1255, 712, 50, 4))  # bară 2
 
     def draw_dashed_line(
         self, surface, color, start_pos, end_pos, width=2, dash_length=20
@@ -276,6 +295,17 @@ class SimulationUI:
                     drawn_dashed.add((u, v))
                     drawn_dashed.add((u2, v2))
                     break
+        # la finalul draw_environment()
+        if self.use_images and hasattr(self, "img_deer"):
+            deer_scaled = pygame.transform.scale(self.img_deer, (35, 35))
+            for (x, y) in self.DEER_DECOR_POINTS:
+                rect = deer_scaled.get_rect(center=(int(x), int(y)))
+                self.screen.blit(deer_scaled, rect)
+        else:
+            # fallback dacă nu ai imagine
+            for (x, y) in getattr(self, "DEER_DECOR_POINTS", []):
+                pygame.draw.circle(self.screen, (139, 69, 19), (int(x), int(y)), 8)
+                    
 
     def draw_traffic_light_agent(self, current_traffic):
         """Semafoare la Intersecția 1 (Stânga-Jos)."""
@@ -452,6 +482,7 @@ class SimulationUI:
             self.draw_environment()
             self.draw_button()
             self.draw_ai_button()
+            self.draw_indicator()
 
             with broker.lock:
                 to_remove = [
