@@ -260,15 +260,29 @@ def run_simulation():
                     broker.vehicles_status.pop(caprioara.agent_id, None)
 
             # ==================================================
-            # NOU: DETECȚIE ACCIDENTE MAI REALISTĂ
+            # DETECȚIE ACCIDENTE MAI REALISTĂ (Mașini + Căprioară)
             # ==================================================
             agent_ids = list(agenti.keys())
             for i in range(len(agent_ids)):
+                a1 = agenti[agent_ids[i]]
+
+                # --- NOU: 1. Coliziune cu CĂPRIOARA ---
+                if status_caprioara is not None and not getattr(
+                    a1, "is_crashed", False
+                ):
+                    dist_animal = math.sqrt(
+                        (a1.position_x - caprioara.position_x) ** 2
+                        + (a1.position_y - caprioara.position_y) ** 2
+                    )
+                    # Hitbox de 25px pentru căprioară. Se lovește doar dacă AI e oprit!
+                    if dist_animal < 25 and not getattr(broker, "ai_enabled", True):
+                        a1.is_crashed = True
+                        print(f"🦌💥 ACCIDENT: {a1.agent_id} a lovit căprioara!")
+
+                # --- 2. Coliziune între mașini ---
                 for j in range(i + 1, len(agent_ids)):
-                    a1 = agenti[agent_ids[i]]
                     a2 = agenti[agent_ids[j]]
 
-                    # Ignorăm dacă ambele sunt deja crashed (să nu spamăm consola)
                     if getattr(a1, "is_crashed", False) and getattr(
                         a2, "is_crashed", False
                     ):
@@ -279,9 +293,7 @@ def run_simulation():
                         + (a1.position_y - a2.position_y) ** 2
                     )
 
-                    # Dacă sunt la mai puțin de 28 pixeli, BOOM! (Coliziune)
-                    # Coliziunea are loc DOAR dacă sistemul de prevenție (AI) e oprit
-                    if dist < 28 and not getattr(broker, "ai_enabled", True):
+                    if dist < 16 and not getattr(broker, "ai_enabled", True):
                         a1.is_crashed = True
                         a2.is_crashed = True
                         print(

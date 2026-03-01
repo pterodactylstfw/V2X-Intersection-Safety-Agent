@@ -52,6 +52,10 @@ class VehicleAgent:
         self.target_int = (0, 0)  # Salvăm intersecția țintă pentru V2X
         self.is_crashed = False
 
+        # --- NOU: Parametri pentru schimbarea benzii (Ocolire) ---
+        self.target_lane_offset = 0.0
+        self.current_lane_offset = 0.0
+
         # --- NOU: 1. GENERAREA RUTEI (Dijkstra) ---
         self.graph = nx.DiGraph()
         for start, end, cost in edges:
@@ -69,10 +73,12 @@ class VehicleAgent:
 
         self.current_node_index = 0
 
-        # Setăm poziția inițială exact pe primul nod
         start_coords = nodes[self.route[0]]
-        self.position_x = start_coords[0]
-        self.position_y = start_coords[1]
+        self.base_x = start_coords[0]
+        self.base_y = start_coords[1]
+
+        self.position_x = self.base_x
+        self.position_y = self.base_y
 
         self.heading = "EAST"  # Default de siguranță
         if len(self.route) > 1:
@@ -204,7 +210,8 @@ class VehicleAgent:
                         self._brake("ANIMAL PE DRUM!")
                         return
 
-        # 0.5 ACC (Evitare Coliziuni Frontale)
+        # 0.5 ACC & DEPĂȘIRE OBSTACOLE (Waze Rerouting)
+        obstacle_in_front = False
         for other_id, other_data in list(self.memory.items()):
             if other_data.get("vehicle_type") == "Infrastructure":
                 continue
@@ -245,12 +252,23 @@ class VehicleAgent:
                     dist_to_front = math.sqrt(
                         (ox - self.position_x) ** 2 + (oy - self.position_y) ** 2
                     )
-                    # NOU: Distanță de siguranță micșorată pentru șoferii agresivi
-                    safe_distance = 55.0 if self.driving_style == "Aggressive" else 90.0
 
+                    # NOU: Dacă mașina din față a făcut accident, o ocolim pe contrasens!
+                    if other_data.get("is_crashed", False) and dist_to_front < 160.0:
+                        obstacle_in_front = True
+                        self.target_lane_offset = (
+                            45.0  # Intră pe contrasens (45px deviație)
+                        )
+                        continue  # Sari peste logica de frânare ca să poată avansa!
+
+                    safe_distance = 55.0 if self.driving_style == "Aggressive" else 90.0
                     if dist_to_front < safe_distance:
                         self._brake(f"ACC: Frânez pt {other_id}")
                         return
+
+        # Dacă a trecut de obstacol sau nu e niciunul, revine pe banda ei
+        if not obstacle_in_front:
+            self.target_lane_offset = 0.0
 
         # 1. VERIFICARE: Am trecut de intersecție?
         is_past = False
@@ -537,37 +555,32 @@ class VehicleAgent:
 
     # ==========================================
     # FUNCȚIILE NOI DE MIȘCARE PE GRAF
-    # ==========================================
     def update_position(self, dt):
         if self.speed <= 0:
             return
 
+        # 1. Deplasarea pe șina de bază (Ghidajul rutei)
         if self.current_node_index >= len(self.route) - 1:
             angle_rad = math.radians(self.visual_angle)
-            self.position_x += self.speed * dt * math.cos(angle_rad)
-            self.position_y += self.speed * dt * math.sin(angle_rad)
-            return
-
-        next_node_name = self.route[self.current_node_index + 1]
-        tx, ty = nodes[next_node_name]
-
-        dist = math.sqrt((tx - self.position_x) ** 2 + (ty - self.position_y) ** 2)
-
-        if dist < 5.0:
-            self.current_node_index += 1
-            if self.current_node_index >= len(self.route) - 1:
-                return
-
-            self._update_heading_and_turn()
-
+            self.base_x += self.speed * dt * math.cos(angle_rad)
+            self.base_y += self.speed * dt * math.sin(angle_rad)
+        else:
             next_node_name = self.route[self.current_node_index + 1]
             tx, ty = nodes[next_node_name]
+            dist = math.sqrt((tx - self.base_x) ** 2 + (ty - self.base_y) ** 2)
 
-        angle_rad = math.atan2(ty - self.position_y, tx - self.position_x)
-        self.visual_angle = math.degrees(angle_rad)
+            if dist < 5.0:
+                self.current_node_index += 1
+                if self.current_node_index < len(self.route) - 1:
+                    self._update_heading_and_turn()
+                    tx, ty = nodes[self.route[self.current_node_index + 1]]
 
-        self.position_x += self.speed * dt * math.cos(angle_rad)
-        self.position_y += self.speed * dt * math.sin(angle_rad)
+            if self.current_node_index < len(self.route) - 1:
+                angle_rad = math.atan2(ty - self.base_y, tx - self.base_x)
+                self.visual_angle = math.degrees(angle_rad)
+
+                self.base_x += self.speed * dt * math.cos(angle_rad)
+                self.base_y += self.speed * dt * math.sin(angle_rad)
 
         deg = self.visual_angle
         if -45 <= deg <= 45:
@@ -578,6 +591,24 @@ class VehicleAgent:
             self.heading = "NORTH"
         else:
             self.heading = "WEST"
+
+        # 2. TRANZIȚIA LINĂ PENTRU DEPĂȘIRE (Glisarea pe contrasens)
+        # Mașina virează ușor stânga/dreapta spre target_lane_offset
+        if self.current_lane_offset < self.target_lane_offset:
+            self.current_lane_offset += 30.0 * dt
+            if self.current_lane_offset > self.target_lane_offset:
+                self.current_lane_offset = self.target_lane_offset
+        elif self.current_lane_offset > self.target_lane_offset:
+            self.current_lane_offset -= 30.0 * dt
+            if self.current_lane_offset < self.target_lane_offset:
+                self.current_lane_offset = self.target_lane_offset
+
+        # 3. Calculăm poziția fizică (Aplicăm offset-ul perpendicular pe șina de bază)
+        angle_rad = math.radians(self.visual_angle)
+        perp_angle = angle_rad - math.pi / 2  # Perpendicular la stânga (contrasens)
+
+        self.position_x = self.base_x + math.cos(perp_angle) * self.current_lane_offset
+        self.position_y = self.base_y + math.sin(perp_angle) * self.current_lane_offset
 
     def _update_heading_and_turn(self):
         # CALCUL PERFECT AL INTENȚIEI DE VIRAJ:
