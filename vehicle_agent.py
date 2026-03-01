@@ -381,12 +381,14 @@ class VehicleAgent:
             return
 
         # IERARHIA 2: SEMAFOR (V2I)
+        # IERARHIA 2: SEMAFOR (V2I)
         semafor_data = self.memory.get("Semafor_Centru")
         is_light_here = False
         has_green_light = False
 
-        if semafor_data and int_x == 400 and int_y == 650 and dist_to_int < 150.0:
-            culoare_axa_mea = "GREEN"
+        # REPARAT: Setăm corect prezența semaforului la max 400px distanță (pentru a activa GLOSA)
+        if semafor_data and int_x == 400 and int_y == 650 and dist_to_int < 400.0:
+            is_light_here = True
 
         if is_light_here and not in_intersection:
             culoare_axa_mea = "GREEN"

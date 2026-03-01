@@ -167,10 +167,19 @@ def run_simulation():
         driving_style="Aggressive",
     )
 
+    agent_urmaritor_neagresiv = VehicleAgent(
+        agent_id="Masina_Neagresiva",
+        start_node="W_START",
+        target_node="E_END",
+        desired_speed=68.0,
+    )
+
     # TRUC: O mutăm manual 350px mai în spate ca să vedem cum o ajunge din urmă și frânează
     # REPARAT: Trebuie să mutăm și "șina invizibilă" (base_x) odată cu poziția reală!
     agent_urmaritor.position_x -= 350
+    agent_urmaritor_neagresiv.position_x -= 650
     agent_urmaritor.base_x -= 350
+    agent_urmaritor_neagresiv.base_x -= 650
 
     # --- SCENARIUL 2: Prioritate de Dreapta ---
     # Vine de jos spre sus (SUD -> NORD). Se va întâlni cu Liderul la I1.
@@ -222,6 +231,7 @@ def run_simulation():
     agenti = {
         "Masina_Lider": agent_lider,
         "Masina_Urmaritor": agent_urmaritor,
+        "Masina_Neagresiva": agent_urmaritor_neagresiv,
         "Masina_Sud1": agent_s1,
         "Masina_Est": agent_est,
         "Masina_Sud2": agent_s2,
@@ -282,7 +292,7 @@ def run_simulation():
                     if dist_animal < 25 and not getattr(broker, "ai_enabled", True):
                         a1.is_crashed = True
                         caprioara.state = "CRASHED"  # NOU: Omorâm și căprioara!
-                        print(f"🦌💥 ACCIDENT: {a1.agent_id} a lovit căprioara!")
+                        print(f"ACCIDENT: {a1.agent_id} a lovit căprioara!")
 
                 # --- 2. Coliziune între mașini ---
                 for j in range(i + 1, len(agent_ids)):
