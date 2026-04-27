@@ -6,15 +6,15 @@ from map_config import nodes, edges
 
 SCREEN_WIDTH = 1500
 SCREEN_HEIGHT = 800
-ROAD_WIDTH_MAIN = 80  
-ROAD_WIDTH_SECONDARY = 40  
+ROAD_WIDTH_MAIN = 80
+ROAD_WIDTH_SECONDARY = 40
 
-# CULORI 
-COLOR_BACKGROUND = (20, 22, 28)  
+# CULORI
+COLOR_BACKGROUND = (20, 22, 28)
 COLOR_ROAD = (55, 58, 70)
 COLOR_LINE = (230, 230, 240)
 COLOR_WALL = (100, 105, 120)
-COLOR_TEXT_UI = (220, 225, 240)  
+COLOR_TEXT_UI = (220, 225, 240)
 COLOR_TEXT_CAR = (102, 178, 255)
 COLOR_RED = (255, 80, 80)
 COLOR_GREEN = (80, 255, 120)
@@ -102,14 +102,14 @@ class SimulationUI:
         self.fps = 60
 
         self.system_on = True
-        self.button_rect = pygame.Rect(20, 20, 160, 45)  
+        self.button_rect = pygame.Rect(20, 20, 160, 45)
 
         self.ai_enabled = True
         self.ai_button_rect = pygame.Rect(200, 20, 160, 45)
 
-        self.animal_button_rect = pygame.Rect(20, 80, 160, 40)  
+        self.animal_button_rect = pygame.Rect(20, 80, 160, 40)
 
-        self.spawn_car_button_rect = pygame.Rect(200, 80, 160, 40)  
+        self.spawn_car_button_rect = pygame.Rect(200, 80, 160, 40)
 
         self.DEER_DECOR_POINTS = [
             (1270, 590, "FX"),
@@ -160,8 +160,8 @@ class SimulationUI:
         if self.img_indicator is None:
             return
 
-        x1, y1 = 1400, 580 
-        x2, y2 = 1300, 700 
+        x1, y1 = 1400, 580
+        x2, y2 = 1300, 700
         img_left = pygame.transform.rotate(self.img_indicator, 90)
         img_right = pygame.transform.rotate(self.img_indicator, -90)
         self.screen.blit(img_left, (x1, y1))
@@ -393,7 +393,7 @@ class SimulationUI:
         if self.use_images and self.img_deer is not None:
             base = pygame.transform.scale(self.img_deer, (35, 35))
             deer_n = base
-            deer_fx = pygame.transform.flip(base, True, False)  
+            deer_fx = pygame.transform.flip(base, True, False)
 
             for x, y, v in self.DEER_DECOR_POINTS:
                 img = deer_n if v == "N" else deer_fx
@@ -614,7 +614,7 @@ class SimulationUI:
             (0, 0, dash_width, dash_height),
             width=2,
             border_radius=12,
-        )  
+        )
 
         title = self.title_font.render("● Command Center", True, (255, 215, 0))
         hud.blit(title, (40, 15))
@@ -701,6 +701,33 @@ class SimulationUI:
 
         self.screen.blit(hud, (SCREEN_WIDTH - dash_width - 20, 20))
 
+    def draw_graph_debug_overlay(self):
+        """Desenează Graful Logic peste harta vizuală pentru debugging."""
+        # 1. Desenează muchiile (drumurile logice) cu o linie subțire cyan
+        for u, v, _ in edges:
+            p1 = nodes.get(u)
+            p2 = nodes.get(v)
+            if p1 and p2:
+                pygame.draw.line(self.screen, (0, 255, 255), p1, p2, 2)
+
+                # Săgeată direcțională la jumătatea drumului (opțional, să vezi sensul)
+                mx, my = (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
+                pygame.draw.circle(self.screen, (0, 200, 255), (int(mx), int(my)), 3)
+
+        # 2. Desenează nodurile și textul (Nume + Coordonate)
+        for node_name, pos in nodes.items():
+            # Punctul exact (Magenta)
+            pygame.draw.circle(self.screen, (255, 0, 255), pos, 5)
+
+            # Eticheta cu Numele și Coordonatele
+            label = f"{node_name} {pos}"
+            text_surf = self.micro_font.render(
+                label, True, (255, 255, 255), (0, 0, 0)
+            )  # Text alb pe fundal negru
+
+            # Plasăm textul puțin decalat față de punct
+            self.screen.blit(text_surf, (pos[0] + 8, pos[1] - 8))
+
     def start(self, broker):
         running = True
         print("Simularea UI a început. Harta rețea (grilă).")
@@ -733,6 +760,7 @@ class SimulationUI:
                             broker.trigger_spawn_car()
 
             self.draw_environment()
+            self.draw_graph_debug_overlay()  # pentru debugging vizual al grafului logic peste harta
             self.draw_buttons(mouse_pos)
             self.draw_indicator()
 
