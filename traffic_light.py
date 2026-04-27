@@ -4,13 +4,7 @@ import time
 import json
 import hashlib
 
-SECRET_KEY = "HACKATHON_AUTO_SECURE_2026"
-
-
-def sign_data(data):
-    clean_data = {k: v for k, v in data.items() if k != "signature"}
-    payload = json.dumps(clean_data, sort_keys=True) + SECRET_KEY
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+from v2x_security import SecurityManager
 
 
 class TrafficLightAgent:
@@ -108,5 +102,5 @@ class TrafficLightAgent:
         }
 
         # Semnăm digital și starea semaforului pentru a preveni falsificarea datelor
-        data_package["signature"] = sign_data(data_package)
+        data_package["signature"] = SecurityManager.sign_data(data_package)
         self.broker.publish(self.agent_id, data_package)
