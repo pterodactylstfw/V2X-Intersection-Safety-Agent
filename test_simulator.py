@@ -66,8 +66,22 @@ def test_vehicle_agent_ambulance_priority(mocker):
     mocker.patch("vehicle_agent.ChatGroq")
 
     agent = VehicleAgent("Car_1", "W_START", "E_END", desired_speed=60.0)
-    agent.navigator.position_x = 100.0
-    agent.navigator.position_y = 675.0
+
+    # Forțăm valorile direct pe agent pentru a ocoli starea inițială "rece" a navigației
+    mocker.patch(
+        "vehicle_agent.VehicleAgent.heading",
+        new_callable=mocker.PropertyMock,
+        return_value="EAST",
+    )
+    mocker.patch(
+        "vehicle_agent.VehicleAgent.visual_angle",
+        new_callable=mocker.PropertyMock,
+        return_value=0.0,
+    )
+
+    # Setăm poziția folosind setter-ul propriu al agentului (care actualizează și base_x)
+    agent.position_x = 100.0
+    agent.position_y = 675.0
 
     # Îi introducem artificial ambulanța în memoria V2X, fix în spatele ei
     agent.memory["Ambulanta_VIP"] = {

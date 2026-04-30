@@ -40,3 +40,5 @@ uuid_utils==0.14.1
 xxhash==3.6.0
 zstandard==0.25.0
 matplotlib==3.8.0
+pytest>=8.0.0
+pytest-mock>=3.10.0
