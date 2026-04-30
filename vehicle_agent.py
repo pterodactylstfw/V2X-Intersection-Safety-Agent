@@ -12,12 +12,14 @@ from langchain_core.prompts import ChatPromptTemplate
 
 import networkx as nx
 from map_config import nodes, edges
+from navigation_system import Navigator
 from v2x_security import SecurityManager
 
 load_dotenv()
 
 
 class VehicleAgent:
+
     def __init__(
         self,
         agent_id,
@@ -33,60 +35,17 @@ class VehicleAgent:
         self.vehicle_type = vehicle_type
         self.driving_style = driving_style
         self.current_state = "CRUISE"
-        self.turn_intent = "GO_STRAIGHT"
+
+        # Inițializăm Navigația în loc de zeci de variabile individuale!
+        self.navigator = Navigator(agent_id, start_node, target_node)
+
         self.memory = {}
         self.last_ai_decision = None
         self.last_ai_call_time = 0
         self.decision_cooldown = 1.0
         self.waiting_for_ai = False
-        self.visual_angle = 0.0
         self.target_int = (0, 0)
         self.is_crashed = False
-
-        self.target_lane_offset = 0.0
-        self.current_lane_offset = 0.0
-
-        # GENERAREA RUTEI
-        self.graph = nx.DiGraph()
-        for start, end, cost in edges:
-            self.graph.add_edge(start, end, weight=cost)
-
-        try:
-            self.route = nx.shortest_path(
-                self.graph, source=start_node, target=target_node, weight="weight"
-            )
-        except nx.NetworkXNoPath:
-            print(
-                f"[{self.agent_id}] EROARE: Nu există drum de la {start_node} la {target_node}!"
-            )
-            self.route = [start_node]
-
-        self.current_node_index = 0
-
-        start_coords = nodes[self.route[0]]
-        self.base_x = start_coords[0]
-        self.base_y = start_coords[1]
-
-        self.position_x = self.base_x
-        self.position_y = self.base_y
-
-        self.heading = "EAST"
-        if len(self.route) > 1:
-            next_coords = nodes[self.route[1]]
-            angle = math.atan2(
-                next_coords[1] - self.position_y, next_coords[0] - self.position_x
-            )
-            deg = math.degrees(angle)
-            if -45 <= deg <= 45:
-                self.heading = "EAST"
-            elif 45 < deg <= 135:
-                self.heading = "SOUTH"
-            elif -135 <= deg < -45:
-                self.heading = "NORTH"
-            else:
-                self.heading = "WEST"
-
-        self._update_heading_and_turn()
 
         self.llm = ChatGroq(temperature=0, model_name="llama-3.1-8b-instant")
         # PROMPT AI ÎMBUNĂTĂȚIT (Prioritate de Dreapta)
@@ -112,6 +71,103 @@ class VehicleAgent:
             ]
         )
         self.chain = self.prompt | self.llm
+
+    @property
+    def position_x(self):
+        return self.navigator.position_x
+
+    @position_x.setter
+    def position_x(self, val):
+        self.navigator.position_x = val
+        self.navigator.base_x = val
+
+    @property
+    def position_y(self):
+        return self.navigator.position_y
+
+    @position_y.setter
+    def position_y(self, val):
+        self.navigator.position_y = val
+        self.navigator.base_y = val
+
+    @property
+    def heading(self):
+        return self.navigator.heading
+
+    @property
+    def visual_angle(self):
+        return self.navigator.visual_angle
+
+    @property
+    def turn_intent(self):
+        return self.navigator.turn_intent
+
+    @turn_intent.setter
+    def turn_intent(self, val):
+        self.navigator.turn_intent = val
+
+    @property
+    def route(self):
+        return self.navigator.route
+
+    @property
+    def current_node_index(self):
+        return self.navigator.current_node_index
+
+    @property
+    def target_lane_offset(self):
+        return self.navigator.target_lane_offset
+
+    @target_lane_offset.setter
+    def target_lane_offset(self, val):
+        self.navigator.target_lane_offset = val
+
+    @property
+    def base_x(self):
+        return self.navigator.base_x
+
+    @base_x.setter
+    def base_x(self, val):
+        self.navigator.base_x = val
+
+    @property
+    def base_y(self):
+        return self.navigator.base_y
+
+    @base_y.setter
+    def base_y(self, val):
+        self.navigator.base_y = val
+
+    # === ACTUALIZĂM METODA DE POZIȚIE (devine foarte curată) ===
+    def update_position(self, dt):
+        if self.speed <= 0:
+            return
+
+        # Navigația face treaba grea
+        self.navigator.update_position(dt, self.speed)
+
+        # CLOUD TELEMETRY: Rămâne neschimbat
+        if hasattr(self, "last_telemetry_time"):
+            if time.time() - self.last_telemetry_time < 1.0:
+                return
+        self.last_telemetry_time = time.time()
+
+        is_braking = 1 if self.current_state == "BRAKING" else 0
+        data_string = f"vehicle_stats,agent_id={self.agent_id} speed={self.speed},braking={is_braking}"
+        headers = {"Authorization": "Token super-secret-auth-token"}
+
+        def send_to_cloud():
+            try:
+                requests.post(
+                    "http://localhost:8086/api/v2/write?org=v2x_org&bucket=telemetry&precision=s",
+                    headers=headers,
+                    data=data_string,
+                    timeout=0.5,
+                )
+            except:
+                pass
+
+        threading.Thread(target=send_to_cloud, daemon=True).start()
 
     def receive_v2x_message(self, message):
         sender_id = message.get("agent_id")
@@ -162,55 +218,33 @@ class VehicleAgent:
             if other_data.get("vehicle_type") == "Infrastructure":
                 continue
 
-            oh = other_data.get("heading", "")
-            if oh == self.heading:
-                ox, oy = other_data.get("position_x", 0), other_data.get(
-                    "position_y", 0
-                )
+            ox, oy = other_data.get("position_x", 0), other_data.get("position_y", 0)
+            other_angle = other_data.get("visual_angle", 0)
 
-                is_in_front = False
-                if (
-                    self.heading == "EAST"
-                    and ox > self.position_x - 15
-                    and abs(oy - self.position_y) < 20
-                ):
-                    is_in_front = True
-                elif (
-                    self.heading == "WEST"
-                    and ox < self.position_x + 15
-                    and abs(oy - self.position_y) < 20
-                ):
-                    is_in_front = True
-                elif (
-                    self.heading == "SOUTH"
-                    and oy > self.position_y - 15
-                    and abs(ox - self.position_x) < 20
-                ):
-                    is_in_front = True
-                elif (
-                    self.heading == "NORTH"
-                    and oy < self.position_y + 15
-                    and abs(ox - self.position_x) < 20
-                ):
-                    is_in_front = True
+            # Calculăm diferența reală de rotație a mașinilor
+            angle_diff = abs((self.visual_angle % 360) - (other_angle % 360))
+            if angle_diff > 180:
+                angle_diff = 360 - angle_diff
 
-                if is_in_front:
-                    dist_to_front = math.sqrt(
-                        (ox - self.position_x) ** 2 + (oy - self.position_y) ** 2
-                    )
+            # Dacă merg relativ pe aceeași axă / direcție
+            if angle_diff <= 35.0:
+                dx = ox - self.base_x
+                dy = oy - self.base_y
 
-                    angle_diff = abs(
-                        (self.visual_angle % 360)
-                        - (other_data.get("visual_angle", 0) % 360)
-                    )
-                    if angle_diff > 180:
-                        angle_diff = 360 - angle_diff
-                    if angle_diff > 25.0:
-                        continue
+                rad = math.radians(self.visual_angle)
+                vx = math.cos(rad)
+                vy = math.sin(rad)
+
+                # Produsul scalar (ne arată dacă e în față) și Produsul vectorial (dacă e pe bandă)
+                dot = dx * vx + dy * vy
+                cross = abs(dx * (-vy) + dy * vx)
+
+                if dot > 0 and cross < 25.0:
+                    dist_to_front = math.sqrt(dx**2 + dy**2)
 
                     if other_data.get("is_crashed", False) and dist_to_front < 160.0:
                         obstacle_in_front = True
-                        self.target_lane_offset = 80.0
+                        self.target_lane_offset = 40.0
                         continue
 
                     safe_distance = 150.0
@@ -218,27 +252,43 @@ class VehicleAgent:
                     if dist_to_front < safe_distance:
                         viteza_lider = other_data.get("speed", 0.0)
 
-                        if self.driving_style == "Aggressive":
-                            if dist_to_front > 60.0:
-                                return
+                        # NOU: Ambulanța depășește fluid mașinile lente sau oprite din fața ei!
+                        if (
+                            self.vehicle_type == "Ambulance"
+                            and viteza_lider < self.speed - 10.0
+                            and dist_to_front < 120.0
+                        ):
+                            obstacle_in_front = True
+                            self.target_lane_offset = 40.0
+                            continue
 
-                            if dist_to_front < 47.0:
-                                self.speed = max(0.0, viteza_lider - 5.0)
-                            else:
-                                if self.speed > viteza_lider:
-                                    self.speed = max(viteza_lider, self.speed - 15.0)
-                                else:
-                                    self.speed = viteza_lider
-                            self.current_state = "BRAKING"
-                            return
+                        if self.driving_style == "Aggressive":
+                            if dist_to_front < 65.0:
+                                self.speed = max(
+                                    0.0, min(self.speed, viteza_lider) - 5.0
+                                )
+                                self.current_state = "BRAKING"
+                                return
+                            elif (
+                                dist_to_front < 85.0 and self.speed > viteza_lider + 2.0
+                            ):
+                                self.speed = max(viteza_lider, self.speed - 4.0)
+                                self.current_state = "BRAKING"
+                                return
                         else:
-                            if dist_to_front < 60.0:
-                                self.speed = max(0.0, viteza_lider - 2.0)
-                            else:
-                                if self.speed > viteza_lider:
-                                    self.speed = max(viteza_lider, self.speed - 3.0)
-                            self.current_state = "BRAKING"
-                            return
+                            if dist_to_front < 80.0:
+                                self.speed = max(
+                                    0.0, min(self.speed, viteza_lider) - 2.0
+                                )
+                                self.current_state = "BRAKING"
+                                return
+                            elif (
+                                dist_to_front < 110.0
+                                and self.speed > viteza_lider + 2.0
+                            ):
+                                self.speed = max(viteza_lider, self.speed - 2.0)
+                                self.current_state = "BRAKING"
+                                return
 
         if not obstacle_in_front:
             self.target_lane_offset = 0.0
@@ -267,19 +317,38 @@ class VehicleAgent:
         if self.vehicle_type != "Ambulance":
             for other_id, other_data in list(self.memory.items()):
                 if other_data.get("vehicle_type") == "Ambulance":
+                    if other_data.get("is_crashed", False):
+                        continue
+
+                    # --- NOU: Dacă ambulanța e direct în spatele nostru, TRAGEM PE DREAPTA! ---
+                    ox, oy = other_data.get("position_x", 0), other_data.get(
+                        "position_y", 0
+                    )
+                    oh = other_data.get("heading", "")
+
+                    if self.heading == oh:
+                        dx_amb = self.position_x - ox
+                        dy_amb = self.position_y - oy
+                        rad = math.radians(self.visual_angle)
+                        dot_amb = dx_amb * math.cos(rad) + dy_amb * math.sin(rad)
+                        dist_amb = math.sqrt(dx_amb**2 + dy_amb**2)
+
+                        # dot_amb > 0 înseamnă că noi suntem în față
+                        if dot_amb > 0 and dist_amb < 200.0:
+                            self.target_lane_offset = (
+                                -35.0
+                            )  # Ne dăm la o parte pe DREAPTA
+                            self._brake("Trag pe dreapta pentru ambulanță!")
+                            return
+                    # -------------------------------------------------------------------------
+
                     amb_int = other_data.get("target_int", (0, 0))
                     if (
                         math.sqrt((int_x - amb_int[0]) ** 2 + (int_y - amb_int[1]) ** 2)
                         > 50.0
                     ):
                         continue
-
-                    ox, oy = other_data.get("position_x", 0), other_data.get(
-                        "position_y", 0
-                    )
-                    oh, o_speed = other_data.get("heading", ""), other_data.get(
-                        "speed", 0
-                    )
+                    o_speed = other_data.get("speed", 0)
                     o_dist_to_int = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
 
                     amb_past = False
@@ -315,10 +384,10 @@ class VehicleAgent:
         is_light_here = False
         has_green_light = False
 
-        if semafor_data and int_x == 400 and int_y == 650 and dist_to_int < 150.0:
-            culoare_axa_mea = "GREEN"
+        if semafor_data and abs(int_x - 400) < 20 and abs(int_y - 650) < 20:
+            is_light_here = True
 
-        if is_light_here and not in_intersection:
+        if is_light_here:
             culoare_axa_mea = "GREEN"
             if self.heading in ["NORTH", "SOUTH"]:
                 culoare_axa_mea = semafor_data.get("state_NS", "GREEN")
@@ -326,14 +395,33 @@ class VehicleAgent:
                 culoare_axa_mea = semafor_data.get("state_EW", "GREEN")
             time_to_change = semafor_data.get("time_to_change", 5.0)
 
-            if culoare_axa_mea == "RED":
+            # Verificăm dacă a forțat deja intersecția sau a trecut de linia de oprire
+            has_passed_stop_line = False
+            if self.heading == "EAST" and self.position_x > int_x - 45:
+                has_passed_stop_line = True
+            elif self.heading == "WEST" and self.position_x < int_x + 45:
+                has_passed_stop_line = True
+            elif self.heading == "SOUTH" and self.position_y > int_y - 45:
+                has_passed_stop_line = True
+            elif self.heading == "NORTH" and self.position_y < int_y + 45:
+                has_passed_stop_line = True
+
+            if has_passed_stop_line:
+                has_green_light = True
+            elif culoare_axa_mea == "RED":
                 if self.driving_style == "Aggressive":
                     if dist_to_int < 80.0:
-                        self._brake("V2I: Opresc la Semafor ROȘU (Agresiv)")
+                        if dist_to_int < 65.0:
+                            self.speed = 0.0
+                        else:
+                            self._brake("V2I: Opresc la Semafor ROȘU (Agresiv)")
                         return
                 else:
                     if dist_to_int < 120.0:
-                        self._brake("V2I: Opresc la Semafor ROȘU")
+                        if dist_to_int < 65.0:
+                            self.speed = 0.0
+                        else:
+                            self._brake("V2I: Opresc la Semafor ROȘU")
                         return
                     elif dist_to_int < 400.0:
                         cadre_ramase = time_to_change * 20
@@ -355,7 +443,10 @@ class VehicleAgent:
                     if timp_pana_la_centru <= time_to_change + 0.5:
                         has_green_light = True
                     elif dist_to_int <= 150.0:
-                        self._brake("V2I: Opresc la Semafor GALBEN")
+                        if dist_to_int < 65.0:
+                            self.speed = 0.0
+                        else:
+                            self._brake("V2I: Opresc la Semafor GALBEN")
                         return
             elif culoare_axa_mea == "GREEN":
                 has_green_light = True
@@ -369,6 +460,8 @@ class VehicleAgent:
         if dist_to_int < 130.0:
             for other_id, other_data in list(self.memory.items()):
                 if other_data.get("vehicle_type") == "Infrastructure":
+                    continue
+                if other_data.get("is_crashed", False):
                     continue
 
                 ox = other_data.get("position_x", 0)
@@ -395,6 +488,10 @@ class VehicleAgent:
                         vine_din_dreapta = True
 
                     if vine_din_dreapta:
+                        # --- NU CEDĂM DACĂ SUNTEM MULT MAI APROAPE DE CENTRU ---
+                        if dist_to_int < other_dist_to_int - 25.0:
+                            continue
+
                         trecut_de_centru = False
                         if oh == "WEST" and ox < int_x - 20:
                             trecut_de_centru = True
@@ -406,6 +503,14 @@ class VehicleAgent:
                             trecut_de_centru = True
 
                         if not trecut_de_centru:
+                            # --- ANTI-DEADLOCK TIE-BREAKER ---
+                            # Dacă celălalt stă pe loc și suntem blocați, forțăm trecerea după ID
+                            if (
+                                other_data.get("speed", 0) < 1.0
+                                and self.agent_id > other_id
+                            ):
+                                continue
+
                             if dist_to_int > 45.0:
                                 self.speed = max(0.0, self.speed - 3.5)
                             else:
@@ -416,6 +521,21 @@ class VehicleAgent:
 
         # IERARHIA 3A: ZIPPER MERGE
         if abs(int_x - 770) < 20 and abs(int_y - 455) < 20:
+            # --- NOU: EVITARE BLOCAJ POST-DIAGONALĂ ---
+            if self.heading == "WEST" and self.position_x < int_x - 5:
+                self._recover_speed()
+                return
+            if self.heading == "EAST" and self.position_x > int_x + 5:
+                self._recover_speed()
+                return
+            if self.heading == "NORTH" and self.position_y < int_y - 5:
+                self._recover_speed()
+                return
+            if self.heading == "SOUTH" and self.position_y > int_y + 5:
+                self._recover_speed()
+                return
+            # ------------------------------------------
+
             conflict_merge = False
             for other_id, other_data in list(self.memory.items()):
                 if other_data.get("vehicle_type") == "Infrastructure":
@@ -454,6 +574,8 @@ class VehicleAgent:
         for other_id, other_data in list(self.memory.items()):
             if other_data.get("vehicle_type") == "Infrastructure":
                 continue
+            if other_data.get("is_crashed", False):
+                continue
             if other_data.get("heading") == self.heading:
                 continue
 
@@ -488,6 +610,10 @@ class VehicleAgent:
             o_dist = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
 
             if o_dist < 350.0:
+                # --- NU CEDĂM DACĂ SUNTEM MULT MAI APROAPE DE CENTRU ---
+                if dist_to_int < o_dist - 35.0:
+                    continue
+
                 my_ttc = dist_to_int / max(self.speed, 1.0)
                 o_ttc = o_dist / max(other_data.get("speed", 0), 1.0)
 
@@ -501,6 +627,15 @@ class VehicleAgent:
                     }
 
                     if yields_to.get(self.heading) == oh:
+                        # --- ANTI-DEADLOCK TIE-BREAKER ---
+                        if (
+                            other_data.get("speed", 0) < 1.0
+                            and self.agent_id > other_id
+                        ):
+                            self.turn_intent = "PRIORITY"
+                            self._recover_speed()
+                            continue
+
                         if self.turn_intent == "TURN_RIGHT":
                             continue
                         if dist_to_int > 90.0:
@@ -572,109 +707,6 @@ class VehicleAgent:
                 self.waiting_for_ai = False
 
         threading.Thread(target=ai_task, daemon=True).start()
-
-    def update_position(self, dt):
-        if self.speed <= 0:
-            return
-
-        if self.current_node_index >= len(self.route) - 1:
-            angle_rad = math.radians(self.visual_angle)
-            self.base_x += self.speed * dt * math.cos(angle_rad)
-            self.base_y += self.speed * dt * math.sin(angle_rad)
-        else:
-            next_node_name = self.route[self.current_node_index + 1]
-            tx, ty = nodes[next_node_name]
-            dist = math.sqrt((tx - self.base_x) ** 2 + (ty - self.base_y) ** 2)
-
-            if dist < 5.0:
-                self.current_node_index += 1
-                if self.current_node_index < len(self.route) - 1:
-                    self._update_heading_and_turn()
-                    tx, ty = nodes[self.route[self.current_node_index + 1]]
-
-            if self.current_node_index < len(self.route) - 1:
-                angle_rad = math.atan2(ty - self.base_y, tx - self.base_x)
-                self.visual_angle = math.degrees(angle_rad)
-
-                self.base_x += self.speed * dt * math.cos(angle_rad)
-                self.base_y += self.speed * dt * math.sin(angle_rad)
-
-        deg = self.visual_angle
-        if -45 <= deg <= 45:
-            self.heading = "EAST"
-        elif 45 < deg <= 135:
-            self.heading = "SOUTH"
-        elif -135 <= deg < -45:
-            self.heading = "NORTH"
-        else:
-            self.heading = "WEST"
-
-        viteză_virare = 55.0
-
-        if self.current_lane_offset < self.target_lane_offset:
-            self.current_lane_offset += viteză_virare * dt
-            if self.current_lane_offset > self.target_lane_offset:
-                self.current_lane_offset = self.target_lane_offset
-        elif self.current_lane_offset > self.target_lane_offset:
-            self.current_lane_offset -= viteză_virare * dt
-            if self.current_lane_offset < self.target_lane_offset:
-                self.current_lane_offset = self.target_lane_offset
-
-        angle_rad = math.radians(self.visual_angle)
-        perp_angle = angle_rad - math.pi / 2
-
-        self.position_x = self.base_x + math.cos(perp_angle) * self.current_lane_offset
-        self.position_y = self.base_y + math.sin(perp_angle) * self.current_lane_offset
-
-        # CLOUD TELEMETRY: Trimitem datele spre Docker (Grafana)
-        if hasattr(self, "last_telemetry_time"):
-            if time.time() - self.last_telemetry_time < 1.0:
-                return
-        self.last_telemetry_time = time.time()
-
-        # InfluxDB
-        is_braking = 1 if self.current_state == "BRAKING" else 0
-        data_string = f"vehicle_stats,agent_id={self.agent_id} speed={self.speed},braking={is_braking}"
-
-        headers = {"Authorization": "Token super-secret-auth-token"}
-
-        def send_to_cloud():
-            try:
-                requests.post(
-                    "http://localhost:8086/api/v2/write?org=v2x_org&bucket=telemetry&precision=s",
-                    headers=headers,
-                    data=data_string,
-                    timeout=0.5,
-                )
-            except:
-                pass
-
-        threading.Thread(target=send_to_cloud, daemon=True).start()
-
-    def _update_heading_and_turn(self):
-        idx = self.current_node_index
-        if idx < len(self.route) - 2:
-            p_curr = nodes[self.route[idx]]
-            p_next = nodes[self.route[idx + 1]]
-            p_next2 = nodes[self.route[idx + 2]]
-
-            angle1 = math.atan2(p_next[1] - p_curr[1], p_next[0] - p_curr[0])
-            angle2 = math.atan2(p_next2[1] - p_next[1], p_next2[0] - p_next[0])
-            diff = math.degrees(angle2 - angle1)
-
-            while diff <= -180:
-                diff += 360
-            while diff > 180:
-                diff -= 360
-
-            if -45 < diff < 45:
-                self.turn_intent = "GO_STRAIGHT"
-            elif diff <= -45:
-                self.turn_intent = "TURN_LEFT"
-            elif diff >= 45:
-                self.turn_intent = "TURN_RIGHT"
-        else:
-            self.turn_intent = "GO_STRAIGHT"
 
     def get_emergency_status(self):
         payload = {

@@ -69,9 +69,7 @@ def run_simulation():
 
     def ai_spawn_car():
         def task():
-            print(
-                "[Traffic Director] Scanează străzile și calculează ruta optimă..."
-            )
+            print("[Traffic Director] Scanează străzile și calculează ruta optimă...")
 
             active_cars = []
             for a_id, a in list(agenti.items()):
@@ -113,15 +111,32 @@ def run_simulation():
                     driving_style=d_style,
                 )
 
-                agenti[new_id] = agent_nou
+                # --- Verificare anti-suprapunere la spawn ---
+                with broker.lock:
+                    este_sigur = True
+                    for a in list(agenti.values()):
+                        if not getattr(a, "is_crashed", False):
+                            distanta = math.sqrt(
+                                (a.position_x - agent_nou.position_x) ** 2
+                                + (a.position_y - agent_nou.position_y) ** 2
+                            )
+                            if distanta < 60.0:
+                                este_sigur = False
+                                break
+
+                    if not este_sigur:
+                        print(
+                            f"[Traffic Director] Punctul de plecare {start_n} e aglomerat. Amânăm spawn-ul lui {new_id}!"
+                        )
+                        return
+
+                    agenti[new_id] = agent_nou
                 print(
                     f"[Traffic Director] Succes! A evitat aglomerația și a creat {new_id} ({v_type}) la {start_n} -> {target_n}"
                 )
 
             except Exception as e:
-                print(
-                    f"[Traffic Director] Eroare format: {e}. Aplic Fallback Random."
-                )
+                print(f"[Traffic Director] Eroare format: {e}. Aplic Fallback Random.")
                 rute_fallback = [
                     ("W_START", "E_END"),
                     ("NW_START", "S1_END"),
@@ -131,7 +146,22 @@ def run_simulation():
                 ]
                 sn, tn = random.choice(rute_fallback)
                 fid = f"Fallback_{random.randint(10,99)}"
-                agenti[fid] = VehicleAgent(fid, sn, tn, 60.0)
+                agent_fallback = VehicleAgent(fid, sn, tn, 60.0)
+
+                with broker.lock:
+                    este_sigur = True
+                    for a in list(agenti.values()):
+                        if not getattr(a, "is_crashed", False):
+                            distanta = math.sqrt(
+                                (a.position_x - agent_fallback.position_x) ** 2
+                                + (a.position_y - agent_fallback.position_y) ** 2
+                            )
+                            if distanta < 60.0:
+                                este_sigur = False
+                                break
+                    if not este_sigur:
+                        return
+                    agenti[fid] = agent_fallback
 
         threading.Thread(target=task, daemon=True).start()
 
@@ -158,16 +188,14 @@ def run_simulation():
     agent_urmaritor.position_x -= 250
     agent_urmaritor.base_x -= 250
 
-    # Prioritate de Dreapta 
+    # Prioritate de Dreapta
     agent_s1 = VehicleAgent(
         agent_id="Masina_Sud1",
         start_node="S1_START",
         target_node="NW_END",
         desired_speed=55.0,
     )
-    agent_s1.position_y += (
-        80  
-    )
+    agent_s1.position_y += 80
 
     # Vine din Dreapta spre Stânga (EST -> VEST).
     agent_est = VehicleAgent(
@@ -226,10 +254,10 @@ def run_simulation():
         dt = 0.05
 
         intersections = [
-            (380, 650),  
-            (1100, 650),  
-            (380, 320),  
-            (800, 435),  
+            (380, 650),
+            (1100, 650),
+            (380, 320),
+            (800, 435),
         ]
 
         while True:
@@ -248,7 +276,7 @@ def run_simulation():
             for i in range(len(agent_ids)):
                 a1 = agenti[agent_ids[i]]
 
-                # Coliziune cu CĂPRIOARA 
+                # Coliziune cu CĂPRIOARA
                 if status_caprioara is not None and not getattr(
                     a1, "is_crashed", False
                 ):
