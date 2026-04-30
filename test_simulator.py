@@ -78,6 +78,6 @@ def test_vehicle_agent_ambulance_priority(mocker):
         "heading": "EAST",
     }
 
-    agent.decide_action(400, 650, ai_global_enabled=False)
+    agent.decide_action(400, 650, ai_global_enabled=True)
 
     assert agent.target_lane_offset == -35.0
