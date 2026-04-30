@@ -1,0 +1,38 @@
+name: Simulator Tests
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Definim variabile de mediu false (dummy) pentru ca testele să poată rula
+    # fără să aibă nevoie de fișierul tău .env real sau de o placă video
+    env:
+      SDL_VIDEODRIVER: dummy        # Foarte important pentru Pygame (să ruleze fără interfață grafică)
+      GROQ_API_KEY: test_dummy_key  # Previne erorile la Langchain/Groq
+      HASH_SECRET_KEY: test_secret  # Pentru V2X Security
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+        cache: 'pip' # Accelerează instalarea pachetelor la următoarele rulări
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-mock
+
+    - name: Run Pytest
+      run: |
+        pytest test_simulator.py -v
