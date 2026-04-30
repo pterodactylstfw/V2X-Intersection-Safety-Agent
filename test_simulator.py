@@ -1,6 +1,7 @@
 import pytest
 import time
 from v2x_security import SecurityManager
+from v2x_network import V2XBroker
 from vehicle_agent import VehicleAgent
 
 
@@ -95,3 +96,142 @@ def test_vehicle_agent_ambulance_priority(mocker):
     agent.decide_action(400, 650, ai_global_enabled=True)
 
     assert agent.target_lane_offset == -35.0
+
+
+def test_vehicle_agent_red_light(mocker):
+    """Testăm dacă mașina frânează corect la culoarea ROȘU a semaforului (V2I)."""
+    mocker.patch("vehicle_agent.ChatGroq")
+    agent = VehicleAgent("Car_1", "W_START", "E_END", desired_speed=60.0)
+
+    mocker.patch(
+        "vehicle_agent.VehicleAgent.heading",
+        new_callable=mocker.PropertyMock,
+        return_value="EAST",
+    )
+    mocker.patch(
+        "vehicle_agent.VehicleAgent.visual_angle",
+        new_callable=mocker.PropertyMock,
+        return_value=0.0,
+    )
+
+    # O punem destul de aproape de intersecția de la X=400
+    agent.position_x = 320.0
+    agent.position_y = 675.0
+
+    # Injectăm semaforul în memorie
+    agent.memory["Semafor_Centru"] = {
+        "agent_id": "Semafor_Centru",
+        "vehicle_type": "Infrastructure",
+        "state_NS": "GREEN",
+        "state_EW": "RED",  # Roșu pe direcția ei (Est-Vest)
+        "time_to_change": 3.0,
+        "position_x": 400.0,
+        "position_y": 400.0,
+    }
+
+    agent.decide_action(400, 650, ai_global_enabled=True)
+
+    # Verificăm dacă a detectat semaforul și a trecut în stare de frânare
+    assert agent.current_state == "BRAKING"
+
+
+def test_vehicle_agent_acc_braking(mocker):
+    """Testăm dacă frânarea de siguranță (ACC) se activează când o mașină e prea aproape de lider."""
+    mocker.patch("vehicle_agent.ChatGroq")
+    agent = VehicleAgent("Car_Fast", "W_START", "E_END", desired_speed=80.0)
+
+    mocker.patch(
+        "vehicle_agent.VehicleAgent.heading",
+        new_callable=mocker.PropertyMock,
+        return_value="EAST",
+    )
+    mocker.patch(
+        "vehicle_agent.VehicleAgent.visual_angle",
+        new_callable=mocker.PropertyMock,
+        return_value=0.0,
+    )
+
+    agent.position_x = 100.0
+    agent.position_y = 675.0
+
+    # Injectăm o mașină lentă la doar 40 de pixeli în fața ei
+    agent.memory["Car_Slow"] = {
+        "agent_id": "Car_Slow",
+        "vehicle_type": "Normal",
+        "position_x": 140.0,
+        "position_y": 675.0,
+        "speed": 20.0,
+        "heading": "EAST",
+        "visual_angle": 0.0,
+    }
+
+    agent.decide_action(400, 650, ai_global_enabled=True)
+
+    assert agent.current_state == "BRAKING"
+    assert agent.speed < 80.0  # Viteza trebuie să fi scăzut automat
+
+
+def test_vehicle_agent_animal_obstacle(mocker):
+    """Testăm frânarea de urgență la detecția unui animal pe carosabil."""
+    mocker.patch("vehicle_agent.ChatGroq")
+    agent = VehicleAgent("Car_1", "W_START", "E_END", desired_speed=60.0)
+
+    mocker.patch(
+        "vehicle_agent.VehicleAgent.heading",
+        new_callable=mocker.PropertyMock,
+        return_value="EAST",
+    )
+
+    agent.position_x = 100.0
+    agent.position_y = 675.0
+
+    # Injectăm căprioara la 50 de metri în fața mașinii
+    agent.memory["Caprioara"] = {
+        "agent_id": "Caprioara",
+        "vehicle_type": "Animal",
+        "position_x": 150.0,
+        "position_y": 675.0,
+    }
+
+    agent.decide_action(400, 650, ai_global_enabled=True)
+
+    assert agent.current_state == "BRAKING"
+
+
+def test_vehicle_agent_crashed_state(mocker):
+    """Testăm dacă o mașină implicată într-un accident (CRASHED) paralizează corect."""
+    mocker.patch("vehicle_agent.ChatGroq")
+    agent = VehicleAgent("Car_1", "W_START", "E_END", desired_speed=60.0)
+
+    agent.is_crashed = True
+    agent.decide_action(400, 650, ai_global_enabled=True)
+
+    assert agent.speed == 0.0
+    assert agent.current_state == "CRASHED"
+
+
+def test_v2x_broker_isolation():
+    """Testăm dacă brokerul izolează pachetele (vehiculul nu își primește propriul mesaj)."""
+    broker = V2XBroker()
+    broker.publish("Masina_A", {"speed": 50.0})
+    broker.publish("Masina_B", {"speed": 40.0})
+
+    # Mașina A ascultă rețeaua
+    traffic_for_a = broker.receive("Masina_A")
+
+    assert "Masina_A" not in traffic_for_a
+    assert "Masina_B" in traffic_for_a
+
+
+def test_ai_negotiation_brake(mocker):
+    """Testăm dacă vehiculul procesează corect comanda AI de a frâna la cedează trecerea."""
+    mocker.patch("vehicle_agent.ChatGroq")
+    agent = VehicleAgent("Car_1", "W_START", "E_END", desired_speed=60.0)
+
+    # Simulăm că AI-ul i-a spus să frâneze și timpul se află în interiorul cooldown-ului (1 secundă)
+    agent.last_ai_decision = "FRANEAZA"
+    agent.last_ai_call_time = time.time()
+
+    agent._negotiate_ai("Car_Other", {})
+
+    assert agent.speed < 60.0  # Vehiculul ar trebui să piardă viteză

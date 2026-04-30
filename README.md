@@ -3,6 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![Pygame](https://img.shields.io/badge/Pygame-2.5.6-green.svg)](https://www.pygame.org/)
 [![AI Powered](https://img.shields.io/badge/AI-LLaMA_3.1-orange.svg)]()
+[![CI Tests](https://github.com/pterodactylstfw/V2X-Intersection-Safety-Agent/actions/workflows/tests.yml/badge.svg)](https://github.com/pterodactylstfw/V2X-Intersection-Safety-Agent/actions)
 
 Built by **Team Trifecta** (Andaraș Bianca-Diana, Aranyosi Rebeka-Imola, Constantin Raul-Nicolae)
 
@@ -15,11 +16,14 @@ A state-of-the-art autonomous traffic simulator created to demonstrate the power
 ## ✨ Key Features
 
 - 🧠 **Autonomous Brain (AI & V2V)**: Vehicles communicate with each other using digitally signed, encrypted packets. They yield, negotiate intersection right-of-way using LLaMA 3.1, and prevent collisions via Adaptive Cruise Control (ACC).
+- 🛡️ **Test-Driven Safety (CI/CD)**: Complete automated test suite using `pytest` and `GitHub Actions` to validate V2X logic, cybersecurity, and emergency braking without relying on live API calls (via `pytest-mock`).
 - 🚥 **Smart Infrastructure (V2I - GLOSA)**: Traffic lights broadcast the remaining time until color changes. Vehicles adjust their speed in advance to catch the "green wave," reducing carbon emissions and harsh braking.
-- 🗺️ **Dynamic Rerouting (Waze-style Bypass)**: Upon detecting an accident ahead, vehicles fluidly switch to the oncoming lane to bypass the obstacle before returning to their original lane.
+-  **Emergency Corridor & Bypass**: Ambulances intelligently bypass traffic via the oncoming lane. Regular vehicles detect V2X emergency packets and autonomously pull over to the side of the road to yield.
+- 📏 **Advanced ACC (Adaptive Cruise Control)**: Vehicles maintain realistic following distances, dynamically adapting their braking force depending on their driving style to prevent the "yo-yo" traffic effect.
 - 🦌 **Wildlife Detection**: The system reacts instantly to unpredictable physical obstacles (e.g., deer on the road), executing emergency braking to stop vehicles safely.
 - 📊 **C-V2X Command Center (Live HUD)**: A transparent dashboard displaying real-time telemetry: active vehicle count, average speed, packet rate (ping), and AI interventions (life-saving brakes).
 - 🎭 **Driving Styles**: Support for both "Cautious" and "Aggressive" drivers (e.g., Ambulances), featuring different reaction times and priority forcing.
+- 🤖 **AI Traffic Director**: A secondary LLM agent acts as a city planner, dynamically spawning new vehicles on optimal routes to maintain a diverse and fluid traffic environment.
 
 ---
 
@@ -36,7 +40,8 @@ Cea mai importantă demonstrație a simulatorului:
 - **Graphical Interface**: Pygame (Glassmorphism UI, anti-aliased rendering).
 - **Routing & Graphs**: Dijkstra's algorithm via the NetworkX library for map navigation.
 - **LLM / AI**: LangChain and Groq API (LLaMA 3.1-8B-Instant model) for complex right-of-way decisions and dynamic traffic generation.
-- **V2X Security**: Data packets are hashed using SHA-256 to prevent spoofing and cyber attacks on the vehicle network.
+- **V2X Security**: Data packets are hashed using SHA-256 to prevent spoofing, featuring strict anti-ghosting mechanisms (timestamp validation).
+- **Automated Testing**: `pytest` for unit/integration tests and `GitHub Actions` for continuous integration workflows.
 
 ---
 
