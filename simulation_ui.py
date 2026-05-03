@@ -111,6 +111,8 @@ class SimulationUI:
 
         self.spawn_car_button_rect = pygame.Rect(200, 80, 160, 40)
 
+        self.spawn_amb_button_rect = pygame.Rect(380, 80, 175, 40)
+
         self.DEER_DECOR_POINTS = [
             (1270, 590, "FX"),
             (1330, 565, "N"),
@@ -497,6 +499,16 @@ class SimulationUI:
             is_hovered=h4,
         )
 
+        h5 = self.spawn_amb_button_rect.collidepoint(mouse_pos)
+        draw_modern_button(
+            self.screen,
+            self.spawn_amb_button_rect,
+            "SPAWN AMBULANȚĂ",
+            self.small_font,
+            (200, 50, 50),
+            is_hovered=h5,
+        )
+
     def render_vehicle(self, v_data):
         v_id = v_data.get("agent_id", "?")
         if v_id == "Semafor_Centru":
@@ -758,6 +770,9 @@ class SimulationUI:
                     elif self.spawn_car_button_rect.collidepoint(event.pos):
                         if hasattr(broker, "trigger_spawn_car"):
                             broker.trigger_spawn_car()
+                    elif self.spawn_amb_button_rect.collidepoint(event.pos):
+                        if hasattr(broker, "trigger_spawn_ambulance"):
+                            broker.trigger_spawn_ambulance()
 
             self.draw_environment()
             self.draw_graph_debug_overlay()  # pentru debugging vizual al grafului logic peste harta

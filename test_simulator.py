@@ -98,6 +98,39 @@ def test_vehicle_agent_ambulance_priority(mocker):
     assert agent.target_lane_offset == -35.0
 
 
+def test_vehicle_agent_ambulance_opposite_priority(mocker):
+    """Testăm dacă mașina trage pe dreapta când vede o ambulanță venind din sens OPUS."""
+    mocker.patch("vehicle_agent.ChatGroq")
+    agent = VehicleAgent("Car_1", "E_START", "W_END", desired_speed=60.0)
+
+    mocker.patch(
+        "vehicle_agent.VehicleAgent.heading",
+        new_callable=mocker.PropertyMock,
+        return_value="WEST",
+    )
+    mocker.patch(
+        "vehicle_agent.VehicleAgent.visual_angle",
+        new_callable=mocker.PropertyMock,
+        return_value=180.0,
+    )
+
+    agent.position_x = 200.0
+    agent.position_y = 635.0
+
+    # Injectăm ambulanța în fața ei pe contrasens (venind spre Est)
+    agent.memory["Ambulanta_VIP"] = {
+        "agent_id": "Ambulanta_VIP",
+        "vehicle_type": "Ambulance",
+        "position_x": 100.0,
+        "position_y": 675.0,
+        "heading": "EAST",
+    }
+
+    agent.decide_action(400, 650, ai_global_enabled=True)
+
+    assert agent.target_lane_offset == -35.0
+
+
 def test_vehicle_agent_red_light(mocker):
     """Testăm dacă mașina frânează corect la culoarea ROȘU a semaforului (V2I)."""
     mocker.patch("vehicle_agent.ChatGroq")

@@ -167,6 +167,50 @@ def run_simulation():
 
     broker.trigger_spawn_car = ai_spawn_car
 
+    def manual_spawn_ambulance():
+        def task():
+            rute_valide = [
+                ("W_START", "E_END"),
+                ("NW_START", "S1_END"),
+                ("S2_START", "W_END"),
+                ("E_START", "W_END"),
+                ("S1_START", "NW_END"),
+                ("NE_ONEWAY_START", "S2_END"),
+            ]
+            sn, tn = random.choice(rute_valide)
+            new_id = f"Ambulanta_VIP_{random.randint(100, 999)}"
+            agent_amb = VehicleAgent(
+                new_id,
+                sn,
+                tn,
+                75.0,
+                vehicle_type="Ambulance",
+                driving_style="Aggressive",
+            )
+
+            with broker.lock:
+                este_sigur = True
+                for a in list(agenti.values()):
+                    if not getattr(a, "is_crashed", False):
+                        distanta = math.sqrt(
+                            (a.position_x - agent_amb.position_x) ** 2
+                            + (a.position_y - agent_amb.position_y) ** 2
+                        )
+                        if distanta < 60.0:
+                            este_sigur = False
+                            break
+                if este_sigur:
+                    agenti[new_id] = agent_amb
+                    print(f"[Manual Spawn] Ambulanță {new_id} a apărut la {sn}!")
+                else:
+                    print(
+                        f"[Manual Spawn] Locația {sn} este blocată. Încearcă din nou!"
+                    )
+
+        threading.Thread(target=task, daemon=True).start()
+
+    broker.trigger_spawn_ambulance = manual_spawn_ambulance
+
     # SCENARII DE TESTARE PREDEFINITE (Haos Controlat)
 
     # ACC (Frânare la mașina din față) ---
