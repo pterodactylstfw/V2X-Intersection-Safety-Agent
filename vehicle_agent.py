@@ -194,6 +194,11 @@ class VehicleAgent:
             self.last_ai_decision = None
             return
 
+        # Calculăm distanța până la centrul intersecției curente din timp
+        dist_to_int = math.sqrt(
+            (int_x - self.position_x) ** 2 + (int_y - self.position_y) ** 2
+        )
+
         # 0. URGENȚĂ ABSOLUTĂ: Evitare Animale
         for other_id, other_data in list(self.memory.items()):
             if other_data.get("vehicle_type") == "Animal":
@@ -204,13 +209,57 @@ class VehicleAgent:
                     (ax - self.position_x) ** 2 + (ay - self.position_y) ** 2
                 )
 
-                if dist_to_animal < 250.0:
+                if (
+                    dist_to_animal < 100.0
+                ):  # Redus pt ca mașinile din spate să folosească ACC-ul
                     if self.heading == "EAST" and ax > self.position_x:
                         self._brake("ANIMAL PE DRUM!")
                         return
                     elif self.heading == "WEST" and ax < self.position_x:
                         self._brake("ANIMAL PE DRUM!")
                         return
+
+        # 0.1 TRAGERE PE DREAPTA PENTRU AMBULANȚĂ
+        is_pulling_over = False
+        # Interzicem tragerea pe dreapta dacă mașina este deja la linia de oprire sau în intersecție (dist_to_int < 85.0)
+        # pentru a preveni glisarea (slide-ul) peste benzile perpendiculare.
+        if self.vehicle_type != "Ambulance" and dist_to_int > 85.0:
+            for other_id, other_data in list(self.memory.items()):
+                if other_data.get("vehicle_type") == "Ambulance" and not other_data.get(
+                    "is_crashed", False
+                ):
+                    ox, oy = other_data.get("position_x", 0), other_data.get(
+                        "position_y", 0
+                    )
+                    oh = other_data.get("heading", "")
+                    opposite_headings = {
+                        "NORTH": "SOUTH",
+                        "SOUTH": "NORTH",
+                        "EAST": "WEST",
+                        "WEST": "EAST",
+                    }
+
+                    dot_amb = 0
+                    dist_amb = 999.0
+
+                    if self.heading == oh:
+                        dx_amb = self.position_x - ox
+                        dy_amb = self.position_y - oy
+                        rad = math.radians(self.visual_angle)
+                        dot_amb = dx_amb * math.cos(rad) + dy_amb * math.sin(rad)
+                        dist_amb = math.sqrt(dx_amb**2 + dy_amb**2)
+                    elif opposite_headings.get(self.heading) == oh:
+                        dx_amb = ox - self.position_x
+                        dy_amb = oy - self.position_y
+                        rad = math.radians(self.visual_angle)
+                        dot_amb = dx_amb * math.cos(rad) + dy_amb * math.sin(rad)
+                        dist_amb = math.sqrt(dx_amb**2 + dy_amb**2)
+
+                    # Detectează ambulanța mai devreme pentru a avea timp să comprime coloana
+                    if dot_amb > 0 and dist_amb < 350.0:
+                        self.target_lane_offset = -35.0
+                        is_pulling_over = True
+                        break
 
         # 0.5 ACC & DEPĂȘIRE OBSTACOLE (Waze Rerouting)
         obstacle_in_front = False
@@ -239,7 +288,10 @@ class VehicleAgent:
                 dot = dx * vx + dy * vy
                 cross = abs(dx * (-vy) + dy * vx)
 
-                if dot > 0 and cross < 25.0:
+                # Lărgim unghiul vizual lateral dacă mașina trage pe dreapta pentru a preveni suprapunerea (overlapping)
+                cross_threshold = 60.0 if is_pulling_over else 25.0
+
+                if dot > 0 and cross < cross_threshold:
                     dist_to_front = math.sqrt(dx**2 + dy**2)
 
                     if other_data.get("is_crashed", False) and dist_to_front < 160.0:
@@ -258,40 +310,132 @@ class VehicleAgent:
                             and viteza_lider < self.speed - 10.0
                             and dist_to_front < 120.0
                         ):
-                            obstacle_in_front = True
-                            self.target_lane_offset = 40.0
-                            continue
+                            # --- PREVENIRE COLIZIUNE FRONTALĂ (DEPĂȘIRE SIGURĂ) ---
+                            contrasens_liber = True
+                            opposite_headings = {
+                                "NORTH": "SOUTH",
+                                "SOUTH": "NORTH",
+                                "EAST": "WEST",
+                                "WEST": "EAST",
+                            }
+                            my_opposite = opposite_headings.get(self.heading)
+
+                            for opp_id, opp_data in list(self.memory.items()):
+                                if opp_data.get(
+                                    "heading"
+                                ) == my_opposite and not opp_data.get(
+                                    "is_crashed", False
+                                ):
+                                    dx_opp = (
+                                        opp_data.get("position_x", 0) - self.position_x
+                                    )
+                                    dy_opp = (
+                                        opp_data.get("position_y", 0) - self.position_y
+                                    )
+
+                                    rad_opp = math.radians(self.visual_angle)
+                                    dot_opp = dx_opp * math.cos(
+                                        rad_opp
+                                    ) + dy_opp * math.sin(rad_opp)
+                                    dist_opp = math.sqrt(dx_opp**2 + dy_opp**2)
+
+                                    # Vine spre noi și e la o distanță periculoasă
+                                    if dot_opp > 0 and dist_opp < 300.0:
+                                        if (
+                                            opp_data.get("vehicle_type") == "Ambulance"
+                                            or dist_opp < 150.0
+                                        ):
+                                            contrasens_liber = False
+                                            break
+
+                            if contrasens_liber:
+                                obstacle_in_front = True
+                                self.target_lane_offset = 40.0
+                                continue
+
+                        if is_pulling_over:
+                            self.current_state = "BRAKING"
+                            if dist_to_front < 48.0:
+                                self.speed = 0.0
+                            else:
+                                # Se apropie mai rapid (cu 20.0) ca să lase loc compact în spate
+                                self.speed = max(20.0, self.speed - 2.0)
+                            return
 
                         if self.driving_style == "Aggressive":
-                            if dist_to_front < 65.0:
+                            if dist_to_front < 48.0:
                                 self.speed = max(
                                     0.0, min(self.speed, viteza_lider) - 5.0
                                 )
                                 self.current_state = "BRAKING"
                                 return
                             elif (
-                                dist_to_front < 85.0 and self.speed > viteza_lider + 2.0
+                                dist_to_front < 75.0 and self.speed > viteza_lider + 2.0
                             ):
                                 self.speed = max(viteza_lider, self.speed - 4.0)
                                 self.current_state = "BRAKING"
                                 return
                         else:
-                            if dist_to_front < 80.0:
+                            if dist_to_front < 55.0:
                                 self.speed = max(
                                     0.0, min(self.speed, viteza_lider) - 2.0
                                 )
                                 self.current_state = "BRAKING"
                                 return
                             elif (
-                                dist_to_front < 110.0
-                                and self.speed > viteza_lider + 2.0
+                                dist_to_front < 85.0 and self.speed > viteza_lider + 2.0
                             ):
                                 self.speed = max(viteza_lider, self.speed - 2.0)
                                 self.current_state = "BRAKING"
                                 return
 
-        if not obstacle_in_front:
-            self.target_lane_offset = 0.0
+        if not obstacle_in_front and not is_pulling_over:
+            # --- ASIGURARE LA REINTRAREA PE BANDĂ ---
+            safe_to_return = True
+            if self.target_lane_offset < -15.0:  # Dacă suntem încă trași pe dreapta
+                for other_id, other_data in list(self.memory.items()):
+                    if other_data.get(
+                        "vehicle_type"
+                    ) == "Infrastructure" or other_data.get("is_crashed", False):
+                        continue
+
+                    if other_data.get("heading") == self.heading:
+                        ox = other_data.get("position_x", 0)
+                        oy = other_data.get("position_y", 0)
+
+                        dx_rear = ox - self.position_x
+                        dy_rear = oy - self.position_y
+                        rad = math.radians(self.visual_angle)
+
+                        # Produsul scalar (dot product) negativ înseamnă că e în SPATELE nostru
+                        dot_rear = dx_rear * math.cos(rad) + dy_rear * math.sin(rad)
+                        dist_rear = math.sqrt(dx_rear**2 + dy_rear**2)
+
+                        # Dacă o mașină vine din spate pe banda noastră și e aproape (< 150px)
+                        if dot_rear < 0 and dist_rear < 150.0:
+                            safe_to_return = False
+                            break
+
+            if safe_to_return:
+                self.target_lane_offset = 0.0
+            else:
+                self.target_lane_offset = -35.0
+                self.current_state = "BRAKING"
+
+                # --- PREVENIRE SLIDE PRIN INTERSECȚIE ---
+                # Dacă suntem pe dreapta și am ajuns la linia de oprire, OPRIM complet!
+                if 45.0 < dist_to_int < 80.0:
+                    self.speed = 0.0
+                else:
+                    self.speed = max(
+                        15.0, self.speed - 2.0
+                    )  # Așteptăm pe dreapta să treacă traficul
+                return
+
+        if is_pulling_over:
+            self.current_state = "BRAKING"
+            self.speed = max(20.0, self.speed - 2.0)
+            return
 
         is_past = False
         if self.heading == "EAST" and self.position_x > int_x + 50:
@@ -308,9 +452,6 @@ class VehicleAgent:
             self.last_ai_decision = None
             return
 
-        dist_to_int = math.sqrt(
-            (int_x - self.position_x) ** 2 + (int_y - self.position_y) ** 2
-        )
         in_intersection = dist_to_int <= 60.0
 
         # IERARHIA 1: PRIORITATE AMBULANȚĂ
@@ -320,27 +461,10 @@ class VehicleAgent:
                     if other_data.get("is_crashed", False):
                         continue
 
-                    # --- NOU: Dacă ambulanța e direct în spatele nostru, TRAGEM PE DREAPTA! ---
                     ox, oy = other_data.get("position_x", 0), other_data.get(
                         "position_y", 0
                     )
                     oh = other_data.get("heading", "")
-
-                    if self.heading == oh:
-                        dx_amb = self.position_x - ox
-                        dy_amb = self.position_y - oy
-                        rad = math.radians(self.visual_angle)
-                        dot_amb = dx_amb * math.cos(rad) + dy_amb * math.sin(rad)
-                        dist_amb = math.sqrt(dx_amb**2 + dy_amb**2)
-
-                        # dot_amb > 0 înseamnă că noi suntem în față
-                        if dot_amb > 0 and dist_amb < 200.0:
-                            self.target_lane_offset = (
-                                -35.0
-                            )  # Ne dăm la o parte pe DREAPTA
-                            self._brake("Trag pe dreapta pentru ambulanță!")
-                            return
-                    # -------------------------------------------------------------------------
 
                     amb_int = other_data.get("target_int", (0, 0))
                     if (
@@ -375,6 +499,39 @@ class VehicleAgent:
                             return
 
         if self.vehicle_type == "Ambulance":
+            # --- EVITARE COLIZIUNE ÎNTRE 2 AMBULANȚE ÎN INTERSECȚIE ---
+            if dist_to_int < 150.0:
+                for other_id, other_data in list(self.memory.items()):
+                    if other_data.get(
+                        "vehicle_type"
+                    ) == "Ambulance" and not other_data.get("is_crashed", False):
+                        ox, oy = other_data.get("position_x", 0), other_data.get(
+                            "position_y", 0
+                        )
+
+                        # Ne asigurăm că cealaltă ambulanță vine spre aceeași intersecție
+                        amb_int = other_data.get("target_int", (0, 0))
+                        if (
+                            math.sqrt(
+                                (int_x - amb_int[0]) ** 2 + (int_y - amb_int[1]) ** 2
+                            )
+                            > 50.0
+                        ):
+                            continue
+
+                        o_dist = math.sqrt((ox - int_x) ** 2 + (oy - int_y) ** 2)
+
+                        if o_dist < 150.0:
+                            if o_dist < dist_to_int - 20.0:
+                                self._brake("Cedez pt altă ambulanță!")
+                                return
+                            elif (
+                                abs(dist_to_int - o_dist) <= 20.0
+                                and self.agent_id > other_id
+                            ):
+                                self._brake("Tie-breaker ambulanțe")
+                                return
+
             self.turn_intent = "PRIORITY"
             self._recover_speed()
             return
