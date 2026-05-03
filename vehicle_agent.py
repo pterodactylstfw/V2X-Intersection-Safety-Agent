@@ -257,7 +257,7 @@ class VehicleAgent:
 
                     # Detectează ambulanța mai devreme pentru a avea timp să comprime coloana
                     if dot_amb > 0 and dist_amb < 350.0:
-                        self.target_lane_offset = -35.0
+                        self.target_lane_offset = -20.0
                         is_pulling_over = True
                         break
 
@@ -296,7 +296,7 @@ class VehicleAgent:
 
                     if other_data.get("is_crashed", False) and dist_to_front < 160.0:
                         obstacle_in_front = True
-                        self.target_lane_offset = 40.0
+                        self.target_lane_offset = 25.0
                         continue
 
                     safe_distance = 150.0
@@ -350,7 +350,7 @@ class VehicleAgent:
 
                             if contrasens_liber:
                                 obstacle_in_front = True
-                                self.target_lane_offset = 40.0
+                                self.target_lane_offset = 25.0
                                 continue
 
                         if is_pulling_over:
@@ -392,7 +392,7 @@ class VehicleAgent:
         if not obstacle_in_front and not is_pulling_over:
             # --- ASIGURARE LA REINTRAREA PE BANDĂ ---
             safe_to_return = True
-            if self.target_lane_offset < -15.0:  # Dacă suntem încă trași pe dreapta
+            if self.target_lane_offset < -10.0:  # Dacă suntem încă trași pe dreapta
                 for other_id, other_data in list(self.memory.items()):
                     if other_data.get(
                         "vehicle_type"
@@ -413,13 +413,16 @@ class VehicleAgent:
 
                         # Dacă o mașină vine din spate pe banda noastră și e aproape (< 150px)
                         if dot_rear < 0 and dist_rear < 150.0:
-                            safe_to_return = False
-                            break
+                            # EVITARE DEADLOCK: Dacă mașina din spate e lentă sau oprită (așteptând în coloană), ne putem reîncadra.
+                            v_spate = other_data.get("speed", 0.0)
+                            if v_spate > max(15.0, self.speed):
+                                safe_to_return = False
+                                break
 
             if safe_to_return:
                 self.target_lane_offset = 0.0
             else:
-                self.target_lane_offset = -35.0
+                self.target_lane_offset = -20.0
                 self.current_state = "BRAKING"
 
                 # --- PREVENIRE SLIDE PRIN INTERSECȚIE ---
@@ -695,154 +698,62 @@ class VehicleAgent:
 
             conflict_merge = False
             for other_id, other_data in list(self.memory.items()):
-                if other_data.get("vehicle_type") == "Infrastructure":
-                    continue
-                other_int = other_data.get("target_int", (0, 0))
-                if (
-                    math.sqrt((int_x - other_int[0]) ** 2 + (int_y - other_int[1]) ** 2)
-                    > 50.0
+                if other_data.get("vehicle_type") == "Infrastructure" or other_data.get(
+                    "is_crashed", False
                 ):
                     continue
 
-                ox, oy = other_data.get("position_x", 0), other_data.get(
-                    "position_y", 0
-                )
-                o_dist = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
+                ox = other_data.get("position_x", 0)
+                oy = other_data.get("position_y", 0)
+                other_dist_to_int = math.sqrt((ox - int_x) ** 2 + (oy - int_y) ** 2)
 
-                if dist_to_int < 300.0 and o_dist < 300.0:
-                    conflict_merge = True
-                    if dist_to_int > o_dist + 15.0:
-                        self._brake(f"Zipper: YIELD pt {other_id}")
-                        return
-                    elif abs(dist_to_int - o_dist) <= 15.0 and self.agent_id > other_id:
-                        self._brake("Zipper: Tie-breaker YIELD")
-                        return
-                    self.turn_intent = "PRIORITY"
-            if not conflict_merge:
-                self._recover_speed()
-            return
-
-        # IERARHIA 3B: PRIORITATE DE DREAPTA
-        if dist_to_int > 350.0:
-            self._recover_speed()
-            return
-
-        conflict_detected = False
-        for other_id, other_data in list(self.memory.items()):
-            if other_data.get("vehicle_type") == "Infrastructure":
-                continue
-            if other_data.get("is_crashed", False):
-                continue
-            if other_data.get("heading") == self.heading:
-                continue
-
-            other_int = other_data.get("target_int", (0, 0))
-            if (
-                math.sqrt((int_x - other_int[0]) ** 2 + (int_y - other_int[1]) ** 2)
-                > 50.0
-            ):
-                continue
-
-            ox, oy = other_data.get("position_x", 0), other_data.get("position_y", 0)
-            oh = other_data.get("heading", "")
-
-            if (self.heading in ["NORTH", "SOUTH"] and oh in ["NORTH", "SOUTH"]) or (
-                self.heading in ["EAST", "WEST"] and oh in ["EAST", "WEST"]
-            ):
-                continue
-
-            other_past = False
-            if oh == "SOUTH" and oy > int_y + 40:
-                other_past = True
-            if oh == "NORTH" and oy < int_y - 40:
-                other_past = True
-            if oh == "EAST" and ox > int_x + 40:
-                other_past = True
-            if oh == "WEST" and ox < int_x - 40:
-                other_past = True
-
-            if other_past:
-                continue
-
-            o_dist = math.sqrt((int_x - ox) ** 2 + (int_y - oy) ** 2)
-
-            if o_dist < 350.0:
-                # --- NU CEDĂM DACĂ SUNTEM MULT MAI APROAPE DE CENTRU ---
-                if dist_to_int < o_dist - 35.0:
-                    continue
-
-                my_ttc = dist_to_int / max(self.speed, 1.0)
-                o_ttc = o_dist / max(other_data.get("speed", 0), 1.0)
-
-                if abs(my_ttc - o_ttc) < 3.5 or o_dist < 80.0:
-                    conflict_detected = True
-                    yields_to = {
-                        "EAST": "NORTH",
-                        "NORTH": "WEST",
-                        "WEST": "SOUTH",
-                        "SOUTH": "EAST",
-                    }
-
-                    if yields_to.get(self.heading) == oh:
-                        # --- ANTI-DEADLOCK TIE-BREAKER ---
+                if other_dist_to_int < 80.0:
+                    if other_dist_to_int < dist_to_int and dist_to_int > 30.0:
+                        # Anti-deadlock la Zipper Merge
                         if (
                             other_data.get("speed", 0) < 1.0
                             and self.agent_id > other_id
                         ):
-                            self.turn_intent = "PRIORITY"
-                            self._recover_speed()
                             continue
+                        conflict_merge = True
+                        break
 
-                        if self.turn_intent == "TURN_RIGHT":
-                            continue
-                        if dist_to_int > 90.0:
-                            self.speed = max(1.5, self.speed - 0.5)
-                            self.current_state = "BRAKING"
-                            return
-                        elif 50.0 <= dist_to_int <= 90.0:
-                            self._brake(f"Cedez trecerea pt {other_id}")
-                            return
-                    elif yields_to.get(oh) == self.heading:
-                        self.turn_intent = "PRIORITY"
-                        continue
-                    else:
-                        self._negotiate_ai(other_id, other_data)
-                        return
-        if not conflict_detected:
-            self.last_ai_decision = None
-            self._recover_speed()
+            if conflict_merge:
+                self._brake("Zipper Merge: Cedez")
+                return
 
-    def _brake(self, reason):
-        self.current_state = "BRAKING"
-        decel_rate = 6.0 if self.driving_style == "Aggressive" else 4.5
-        self.speed = max(0, self.speed - decel_rate)
+        # IERARHIA 3B: AI LLM Negociere (Intersecții fără semafor)
+        if not is_light_here and in_intersection and not self.waiting_for_ai:
+            for other_id, other_data in list(self.memory.items()):
+                if other_data.get("vehicle_type") == "Infrastructure" or other_data.get(
+                    "is_crashed", False
+                ):
+                    continue
 
-    def _recover_speed(self):
-        self.current_state = "CRUISE"
-        accel_rate = 4.0 if self.driving_style == "Aggressive" else 2.0
-        if self.speed < self.desired_speed:
-            self.speed = min(self.desired_speed, self.speed + accel_rate)
+                ox = other_data.get("position_x", 0)
+                oy = other_data.get("position_y", 0)
+                o_dist = math.sqrt((ox - int_x) ** 2 + (oy - int_y) ** 2)
+
+                if o_dist < 60.0:
+                    self._negotiate_ai(other_id, other_data)
+                    return
+
+        self._recover_speed()
+        self.last_ai_decision = None
 
     def _negotiate_ai(self, other_id, other_data):
-        if self.waiting_for_ai:
-            self.speed = max(0, self.speed - 2.0)
-            return
-
         current_time = time.time()
-        if self.last_ai_decision and (
-            current_time - self.last_ai_call_time < self.decision_cooldown
-        ):
-            if "FRANEAZA" in self.last_ai_decision:
-                self.speed = max(0, self.speed - 5.0)
-            else:
-                self._recover_speed()
+        if current_time - self.last_ai_call_time < self.decision_cooldown:
+            if self.last_ai_decision == "FRANEAZA":
+                self._brake(f"AI Cooldown: Frânez pt {other_id}")
             return
 
         self.waiting_for_ai = True
+        self._brake("AI gândește...")
 
-        def ai_task():
+        def call_llm():
             try:
-                res = self.chain.invoke(
+                response = self.chain.invoke(
                     {
                         "my_id": self.agent_id,
                         "my_type": self.vehicle_type,
@@ -852,45 +763,51 @@ class VehicleAgent:
                         "other_heading": other_data.get("heading", "UNKNOWN"),
                     }
                 )
-                self.last_ai_decision = res.content.upper()
-                print(
-                    f"[AI Prioritate] {self.agent_id}({self.heading}) a vazut {other_id}({other_data.get('heading')}) -> A decis: {self.last_ai_decision}"
-                )
+                decision = response.content.strip().upper()
+                self.last_ai_decision = decision
                 self.last_ai_call_time = time.time()
+
+                if "FRANEAZA" in decision:
+                    self._brake(f"AI Decizie: Frânez pt {other_id}")
+                else:
+                    self._recover_speed()
             except Exception as e:
-                print(f"[AI EROARE] {self.agent_id} -> Frână de urgență!")
-                self.last_ai_decision = "FRANEAZA"
+                print(f"[{self.agent_id}] AI Eroare: {e}")
+                self._brake("Eroare AI -> Opresc de siguranță")
             finally:
                 self.waiting_for_ai = False
 
-        threading.Thread(target=ai_task, daemon=True).start()
+        threading.Thread(target=call_llm, daemon=True).start()
+
+    def _brake(self, reason):
+        self.current_state = "BRAKING"
+        self.turn_intent = "YIELDING"
+        self.speed = max(0.0, self.speed - 3.0)
+
+    def _recover_speed(self):
+        self.current_state = "CRUISE"
+        if self.speed < self.desired_speed:
+            self.speed += 1.0
+        elif self.speed > self.desired_speed:
+            self.speed -= 1.0
 
     def get_emergency_status(self):
-        payload = {
+        data = {
             "agent_id": self.agent_id,
+            "vehicle_type": self.vehicle_type,
             "position_x": self.position_x,
             "position_y": self.position_y,
             "speed": self.speed,
-            "driving_style": self.driving_style,
-            "vehicle_type": self.vehicle_type,
-            "visual_angle": self.visual_angle,
-            "intent": (
-                "CRASHED"
-                if self.is_crashed
-                else (
-                    self.current_state
-                    if self.current_state != "CRUISE"
-                    else self.turn_intent
-                )
-            ),
-            "is_crashed": self.is_crashed,
             "heading": self.heading,
-            "timestamp": time.time(),
+            "visual_angle": self.visual_angle,
+            "intent": self.current_state,
+            "driving_style": self.driving_style,
             "target_int": self.target_int,
+            "is_crashed": self.is_crashed,
+            "timestamp": time.time(),
         }
-
-        payload["signature"] = SecurityManager.sign_data(payload)
-        return payload
+        data["signature"] = SecurityManager.sign_data(data)
+        return data
 
     def has_decided_to_brake(self):
         return self.current_state == "BRAKING"
