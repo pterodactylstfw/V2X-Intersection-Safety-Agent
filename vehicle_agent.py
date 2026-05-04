@@ -189,10 +189,7 @@ class VehicleAgent:
             self.current_state = "CRASHED"
             return
 
-        if not ai_global_enabled:
-            self._recover_speed()
-            self.last_ai_decision = None
-            return
+
 
         # Calculăm distanța până la centrul intersecției curente din timp
         dist_to_int = math.sqrt(
@@ -747,7 +744,7 @@ class VehicleAgent:
                 return
 
         # IERARHIA 3B: AI LLM Negociere (Intersecții fără semafor)
-        if not is_light_here and in_intersection and not self.waiting_for_ai:
+        if ai_global_enabled and not is_light_here and in_intersection and not self.waiting_for_ai:
             for other_id, other_data in list(self.memory.items()):
                 if other_data.get("vehicle_type") == "Infrastructure" or other_data.get(
                     "is_crashed", False
