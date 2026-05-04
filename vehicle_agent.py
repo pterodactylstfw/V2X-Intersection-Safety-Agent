@@ -221,9 +221,9 @@ class VehicleAgent:
 
         # 0.1 TRAGERE PE DREAPTA PENTRU AMBULANȚĂ
         is_pulling_over = False
-        # Interzicem tragerea pe dreapta dacă mașina este deja la linia de oprire sau în intersecție (dist_to_int < 85.0)
-        # pentru a preveni glisarea (slide-ul) peste benzile perpendiculare.
-        if self.vehicle_type != "Ambulance" and dist_to_int > 85.0:
+        # Interzicem tragerea pe dreapta dacă mașina este deja adânc în intersecție (dist_to_int < 35.0)
+        # pentru a preveni glisarea (slide-ul) peste benzile perpendiculare. Permitem la semafor.
+        if self.vehicle_type != "Ambulance" and dist_to_int > 35.0:
             for other_id, other_data in list(self.memory.items()):
                 if other_data.get("vehicle_type") == "Ambulance" and not other_data.get(
                     "is_crashed", False
@@ -241,6 +241,15 @@ class VehicleAgent:
 
                     dot_amb = 0
                     dist_amb = 999.0
+                    
+                    other_angle = other_data.get("visual_angle", 0)
+                    angle_diff = abs((self.visual_angle % 360) - (other_angle % 360))
+                    if angle_diff > 180:
+                        angle_diff = 360 - angle_diff
+                        
+                    # Ambulanța trebuie să fie pe aceeași axă (paralel sau antiparalel)
+                    if angle_diff > 25.0 and angle_diff < 155.0:
+                        continue
 
                     if self.heading == oh:
                         dx_amb = self.position_x - ox
@@ -248,15 +257,16 @@ class VehicleAgent:
                         rad = math.radians(self.visual_angle)
                         dot_amb = dx_amb * math.cos(rad) + dy_amb * math.sin(rad)
                         dist_amb = math.sqrt(dx_amb**2 + dy_amb**2)
+                        cross_amb = abs(dx_amb * (-math.sin(rad)) + dy_amb * math.cos(rad))
                     elif opposite_headings.get(self.heading) == oh:
                         dx_amb = ox - self.position_x
                         dy_amb = oy - self.position_y
                         rad = math.radians(self.visual_angle)
                         dot_amb = dx_amb * math.cos(rad) + dy_amb * math.sin(rad)
                         dist_amb = math.sqrt(dx_amb**2 + dy_amb**2)
-
-                    # Detectează ambulanța mai devreme pentru a avea timp să comprime coloana
-                    if dot_amb > 0 and dist_amb < 350.0:
+                        cross_amb = abs(dx_amb * (-math.sin(rad)) + dy_amb * math.cos(rad))
+                    # Rămâne tras pe dreapta cât timp ambulanța este în apropiere (180px)
+                    if dist_amb < 180.0:
                         self.target_lane_offset = -20.0
                         is_pulling_over = True
                         break
@@ -277,8 +287,8 @@ class VehicleAgent:
 
             # Dacă merg relativ pe aceeași axă / direcție
             if angle_diff <= 35.0:
-                dx = ox - self.base_x
-                dy = oy - self.base_y
+                dx = ox - self.position_x
+                dy = oy - self.position_y
 
                 rad = math.radians(self.visual_angle)
                 vx = math.cos(rad)
@@ -288,10 +298,17 @@ class VehicleAgent:
                 dot = dx * vx + dy * vy
                 cross = abs(dx * (-vy) + dy * vx)
 
-                # Lărgim unghiul vizual lateral dacă mașina trage pe dreapta pentru a preveni suprapunerea (overlapping)
-                cross_threshold = 60.0 if is_pulling_over else 25.0
+                # Lărgim unghiul vizual lateral dacă mașina trage pe dreapta sau e ambulanță
+                if is_pulling_over or self.vehicle_type == "Ambulance":
+                    cross_threshold = 60.0
+                else:
+                    cross_threshold = 25.0
 
                 if dot > 0 and cross < cross_threshold:
+                    # Ambulanța ignoră mașinile care s-au tras deja pe dreapta complet
+                    if self.vehicle_type == "Ambulance" and other_data.get("target_lane_offset", 0.0) < -10.0:
+                        continue
+
                     dist_to_front = math.sqrt(dx**2 + dy**2)
 
                     if other_data.get("is_crashed", False) and dist_to_front < 160.0:
@@ -304,11 +321,10 @@ class VehicleAgent:
                     if dist_to_front < safe_distance:
                         viteza_lider = other_data.get("speed", 0.0)
 
-                        # NOU: Ambulanța depășește fluid mașinile lente sau oprite din fața ei!
+                        # Ambulanța depășește fluid mașinile lente sau oprite din fața ei!
                         if (
                             self.vehicle_type == "Ambulance"
-                            and viteza_lider < self.speed - 10.0
-                            and dist_to_front < 120.0
+                            and dist_to_front < 140.0
                         ):
                             # --- PREVENIRE COLIZIUNE FRONTALĂ (DEPĂȘIRE SIGURĂ) ---
                             contrasens_liber = True
@@ -351,16 +367,21 @@ class VehicleAgent:
                             if contrasens_liber:
                                 obstacle_in_front = True
                                 self.target_lane_offset = 25.0
-                                continue
 
-                        if is_pulling_over:
-                            self.current_state = "BRAKING"
-                            if dist_to_front < 48.0:
+                        if not obstacle_in_front:
+                            if dist_to_front < 35.0:
                                 self.speed = 0.0
-                            else:
-                                # Se apropie mai rapid (cu 20.0) ca să lase loc compact în spate
-                                self.speed = max(20.0, self.speed - 2.0)
-                            return
+                                self.current_state = "BRAKING"
+                                return
+
+                            if is_pulling_over:
+                                self.current_state = "BRAKING"
+                                if dist_to_front < 48.0:
+                                    self.speed = 0.0
+                                else:
+                                    # Se apropie mai rapid (cu 20.0) ca să lase loc compact în spate
+                                    self.speed = max(20.0, self.speed - 2.0)
+                                return
 
                         if self.driving_style == "Aggressive":
                             if dist_to_front < 48.0:
@@ -413,9 +434,9 @@ class VehicleAgent:
 
                         # Dacă o mașină vine din spate pe banda noastră și e aproape (< 150px)
                         if dot_rear < 0 and dist_rear < 150.0:
-                            # EVITARE DEADLOCK: Dacă mașina din spate e lentă sau oprită (așteptând în coloană), ne putem reîncadra.
+                            # EVITARE DEADLOCK: Ne putem reîncadra dacă mașina din spate nu vine glonț
                             v_spate = other_data.get("speed", 0.0)
-                            if v_spate > max(15.0, self.speed):
+                            if v_spate > self.speed + 15.0:
                                 safe_to_return = False
                                 break
 
@@ -427,7 +448,7 @@ class VehicleAgent:
 
                 # --- PREVENIRE SLIDE PRIN INTERSECȚIE ---
                 # Dacă suntem pe dreapta și am ajuns la linia de oprire, OPRIM complet!
-                if 45.0 < dist_to_int < 80.0:
+                if 35.0 < dist_to_int < 80.0:
                     self.speed = 0.0
                 else:
                     self.speed = max(
@@ -437,7 +458,10 @@ class VehicleAgent:
 
         if is_pulling_over:
             self.current_state = "BRAKING"
-            self.speed = max(20.0, self.speed - 2.0)
+            if 35.0 < dist_to_int < 80.0:
+                self.speed = 0.0
+            else:
+                self.speed = max(20.0, self.speed - 2.0)
             return
 
         is_past = False
@@ -617,7 +641,7 @@ class VehicleAgent:
             return
 
         # IERARHIA 2.5: REFLEX PRIORITATE DE DREAPTA
-        if dist_to_int < 130.0:
+        if self.vehicle_type != "Ambulance" and dist_to_int < 130.0:
             for other_id, other_data in list(self.memory.items()):
                 if other_data.get("vehicle_type") == "Infrastructure":
                     continue
@@ -804,6 +828,7 @@ class VehicleAgent:
             "driving_style": self.driving_style,
             "target_int": self.target_int,
             "is_crashed": self.is_crashed,
+            "target_lane_offset": self.target_lane_offset,
             "timestamp": time.time(),
         }
         data["signature"] = SecurityManager.sign_data(data)
